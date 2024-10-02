@@ -1,5 +1,5 @@
 #[allow(dead_code)]
-#[derive(Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum State {
     #[default]
     Ground,
@@ -239,10 +239,10 @@ pub fn change_state(state: State, byte: u8) -> Option<(State, Option<Action>)> {
         },
 
         OscString => match byte {
-            0x00..=0x17 | 0x19 | 0x1C..=0x1F => Some((Anywhere, Some(Ignore))),
+            0x00..=0x06 | 0x08..=0x17 | 0x19 | 0x1C..=0x1F => Some((Anywhere, Some(Ignore))),
             0x20..=0x7F => Some((Anywhere, Some(OscPut))),
 
-            0x9C => Some((Ground, None)),
+            0x07 | 0x9C => Some((Ground, None)),
 
             _ => None,
         },
@@ -250,7 +250,7 @@ pub fn change_state(state: State, byte: u8) -> Option<(State, Option<Action>)> {
         SosPmApcString => match byte {
             0x00..=0x17 | 0x19 | 0x1C..=0x1F | 0x20..=0x7F => Some((Anywhere, Some(Ignore))),
 
-            0x9C => Some((Ground, None)),
+             0x9C => Some((Ground, None)),
 
             _ => None,
         },
