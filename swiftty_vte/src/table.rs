@@ -120,8 +120,6 @@ pub fn change_state(state: State, byte: u8) -> Option<(State, Option<Action>)> {
             0x00..=0x17 | 0x19 | 0x1C..=0x1F => Some((Anywhere, Some(Execute))),
             0x20..=0x7F => Some((Anywhere, Some(Print))),
 
-            // Beginning of UTF-8 2, 3 and 4 byte sequence
-            //0xC2..=0xDF | 0xE0..=0xEF | 0xF0..=0xF4 => Some((UTF8, Some(BeginUtf8))),
             _ => None,
         },
 
@@ -154,7 +152,6 @@ pub fn change_state(state: State, byte: u8) -> Option<(State, Option<Action>)> {
             0x00..=0x17 | 0x19 | 0x1C..=0x1F => Some((Anywhere, Some(Execute))),
             0x7F => Some((Anywhere, Some(Ignore))),
             0x20..=0x2F => Some((CsiIntermediate, Some(Collect))),
-            // 0x3A => Some((CsiIgnore, None)),
             0x40..=0x7E => Some((Ground, Some(CsiDispatch))),
 
             // 0x3A ':' (colon) should result CsiIgnore state according to the parser

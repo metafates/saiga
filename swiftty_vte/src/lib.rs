@@ -29,11 +29,6 @@ impl Parser {
     }
 
     pub fn advance<E: Executor>(&mut self, executor: &mut E, byte: u8) {
-        //if let State::UTF8 = self.state {
-        //    // TODO: process UTF8
-        //    return;
-        //}
-
         let change = table::change_state(State::Anywhere, byte)
             .or_else(|| table::change_state(self.state, byte));
 
