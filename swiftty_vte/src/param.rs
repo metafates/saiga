@@ -1,13 +1,11 @@
-use std::borrow::BorrowMut;
-
 pub const MAX_PARAMS: usize = 16;
-pub const MAX_SUBPARAMS: usize = MAX_PARAMS;
+pub const MAX_SUBPARAMS: usize = MAX_PARAMS * 2;
 pub const PARAM_SEPARATOR: u8 = b';';
 pub const SUBPARAM_SEPARATOR: u8 = b':';
 
 pub type Subparam = u16;
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Param {
     array: [Subparam; MAX_SUBPARAMS],
     len: usize,
@@ -97,7 +95,7 @@ impl<'a> IntoIterator for &'a Param {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct Params {
     array: [Param; MAX_PARAMS],
     len: usize,
@@ -121,17 +119,18 @@ impl Params {
         self.len == MAX_PARAMS
     }
 
-    pub fn push(&mut self, subparam: Subparam) {
+    pub fn next_param(&mut self) {
         if self.is_full() {
             return;
         }
 
-        self.array[self.len] = subparam.into();
         self.len += 1;
     }
 
-    pub fn extend(&mut self, subparam: Subparam) {
-        self.array[self.len.saturating_sub(1)].push(subparam);
+    pub fn push_subparam(&mut self, subparam: Subparam) {
+        self.array[self.len].push(subparam);
+
+        //println!("{:?}", self.array[index])
     }
 
     pub fn iter(&self) -> ParamsIter<'_> {

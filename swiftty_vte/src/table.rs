@@ -154,9 +154,12 @@ pub fn change_state(state: State, byte: u8) -> Option<(State, Option<Action>)> {
             0x00..=0x17 | 0x19 | 0x1C..=0x1F => Some((Anywhere, Some(Execute))),
             0x7F => Some((Anywhere, Some(Ignore))),
             0x20..=0x2F => Some((CsiIntermediate, Some(Collect))),
-            0x3A => Some((CsiIgnore, None)),
+            // 0x3A => Some((CsiIgnore, None)),
             0x40..=0x7E => Some((Ground, Some(CsiDispatch))),
-            0x30..=0x39 | 0x3B => Some((CsiParam, Some(Param))),
+
+            // 0x3A ':' (colon) should result CsiIgnore state according to the parser
+            // specification. However, our parser implements subparameters separated by colon
+            0x30..=0x3B => Some((CsiParam, Some(Param))),
             0x3C..=0x3F => Some((CsiParam, Some(Collect))),
 
             _ => None,
@@ -164,8 +167,12 @@ pub fn change_state(state: State, byte: u8) -> Option<(State, Option<Action>)> {
 
         CsiParam => match byte {
             0x00..=0x17 | 0x19 | 0x1C..=0x1F => Some((Anywhere, Some(Execute))),
-            0x30..=0x39 | 0x3B => Some((Anywhere, Some(Param))),
-            0x3A | 0x3C..=0x3F => Some((CsiIgnore, None)),
+
+            // 0x3A ':' (colon) should result CsiIgnore state according to the parser
+            // specification. However, our parser implements subparameters separated by colon
+            0x30..=0x3B => Some((Anywhere, Some(Param))),
+
+            0x3C..=0x3F => Some((CsiIgnore, None)),
             0x20..=0x2F => Some((CsiIntermediate, None)),
             0x40..=0x7E => Some((Ground, Some(CsiDispatch))),
 
@@ -250,7 +257,7 @@ pub fn change_state(state: State, byte: u8) -> Option<(State, Option<Action>)> {
         SosPmApcString => match byte {
             0x00..=0x17 | 0x19 | 0x1C..=0x1F | 0x20..=0x7F => Some((Anywhere, Some(Ignore))),
 
-             0x9C => Some((Ground, None)),
+            0x9C => Some((Ground, None)),
 
             _ => None,
         },
