@@ -1,176 +1,24 @@
+mod executor;
+mod intermediate;
+mod osc;
 mod param;
 mod table;
 
+use executor::Executor;
+use osc::MAX_OSC_PARAMS;
 use param::{Params, Subparam};
 use table::{Action, State};
-
-/// X3.64 doesn’t place any limit on the number of intermediate characters allowed before a final character,
-/// although it doesn’t define any control sequences with more than one.
-/// Digital defined escape sequences with two intermediate characters,
-/// and control sequences and device control strings with one.
-const MAX_INTERMEDIATES: usize = 2;
-
-/// There is no limit to the number of characters in a parameter string,
-/// although a maximum of 16 parameters need be stored.
-const MAX_OSC_PARAMS: usize = 16;
-
-pub trait Executor {
-    /// Draw a character to the screen.
-    fn print(&mut self, c: char);
-
-    /// Execute C0 or C1 control function
-    fn execute(&mut self, byte: u8);
-
-    /// Pass bytes as part of a device control string to the handle chosen in `hook`. C0 controls
-    /// will also be passed to the handler.
-    fn put(&mut self, byte: u8);
-
-    /// Invoked when a final character arrives in first part of device control string.
-    ///
-    /// The control function should be determined from the private marker, final character, and
-    /// execute with a parameter list. A handler should be selected for remaining characters in the
-    /// string; the handler function should subsequently be called by `put` for every character in
-    /// the control string.
-    ///
-    /// The `ignore` flag indicates that more than two intermediates arrived and
-    /// subsequent characters were ignored.
-    fn hook(&mut self, params: &Params, intermediates: &[u8], ignore: bool, action: char);
-
-    /// Called when a device control string is terminated.
-    ///
-    /// The previously selected handler should be notified that the DCS has
-    /// terminated.
-    fn unhook(&mut self);
-
-    /// Dispatch an operating system command.
-    fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool);
-
-    /// The final character of an escape sequence has arrived.
-    ///
-    /// The `ignore` flag indicates that more than two intermediates arrived and
-    /// subsequent characters were ignored.
-    fn esc_dispatch(&mut self, intermediates: &[u8], ignore: bool, byte: u8);
-
-    /// A final character has arrived for a CSI sequence
-    ///
-    /// The `ignore` flag indicates that either more than two intermediates arrived
-    /// or the number of parameters exceeded the maximum supported length,
-    /// and subsequent characters were ignored.
-    fn csi_dispatch(&mut self, params: &Params, intermediates: &[u8], ignore: bool, action: char);
-}
-
-#[derive(Default)]
-struct OscHandler {
-    params: [(usize, usize); MAX_OSC_PARAMS],
-    params_num: usize,
-    raw: Vec<u8>,
-}
-
-impl OscHandler {
-    fn start(&mut self) {
-        self.raw.clear();
-        self.params_num = 0;
-    }
-
-    fn put(&mut self, byte: u8) {
-        let idx = self.raw.len();
-
-        if byte != b';' {
-            self.raw.push(byte);
-            return;
-        }
-
-        // handle param separator
-
-        match self.params_num {
-            MAX_OSC_PARAMS => return,
-
-            0 => self.params[0] = (0, idx),
-
-            param_idx => {
-                let prev = self.params[param_idx - 1];
-
-                self.params[param_idx] = (prev.1, idx)
-            }
-        }
-
-        self.params_num += 1;
-    }
-
-    fn end<E: Executor>(&mut self, executor: &mut E, byte: u8) {
-        let idx = self.raw.len();
-
-        match self.params_num {
-            MAX_OSC_PARAMS => (),
-
-            0 => {
-                self.params[0] = (0, idx);
-                self.params_num += 1;
-            }
-
-            param_idx => {
-                let prev = self.params[param_idx - 1];
-
-                self.params[param_idx] = (prev.1, idx);
-                self.params_num += 1;
-            }
-        }
-
-        self.dispatch(executor, byte);
-    }
-
-    fn dispatch<E: Executor>(&self, executor: &mut E, byte: u8) {
-        let slices: Vec<&[u8]> = self
-            .params
-            .iter()
-            .map(|(start, end)| &self.raw[*start..*end])
-            .collect();
-
-        let params = &slices[..self.params_num];
-
-        executor.osc_dispatch(params, byte == 0x07)
-    }
-}
-
-#[derive(Default)]
-struct Intermediates {
-    array: [u8; MAX_INTERMEDIATES],
-    index: usize,
-}
-
-impl Intermediates {
-    pub fn as_slice(&self) -> &[u8] {
-        &self.array[..self.index]
-    }
-
-    pub fn is_full(&self) -> bool {
-        self.index == MAX_INTERMEDIATES
-    }
-
-    pub fn push(&mut self, byte: u8) {
-        if self.is_full() {
-            return;
-        }
-
-        self.array[self.index] = byte;
-        self.index += 1;
-    }
-
-    pub fn clear(&mut self) {
-        self.index = 0
-    }
-}
 
 #[derive(Default)]
 pub struct Parser {
     state: State,
 
-    osc_handler: OscHandler,
+    osc_handler: osc::Handler,
 
     params: Params,
     subparam: Subparam,
 
-    intermediates: Intermediates,
+    intermediate_handler: intermediate::Handler,
 
     ignoring: bool,
 }
@@ -265,7 +113,7 @@ impl Parser {
 
                 executor.hook(
                     &self.params,
-                    self.intermediates.as_slice(),
+                    self.intermediate_handler.as_slice(),
                     self.ignoring,
                     byte as char,
                 );
@@ -303,20 +151,20 @@ impl Parser {
 
                 executor.csi_dispatch(
                     &self.params,
-                    self.intermediates.as_slice(),
+                    self.intermediate_handler.as_slice(),
                     self.ignoring,
                     byte as char,
                 );
             }
             Collect => {
-                if self.intermediates.is_full() {
+                if self.intermediate_handler.is_full() {
                     self.ignoring = true
                 } else {
-                    self.intermediates.push(byte);
+                    self.intermediate_handler.push(byte);
                 }
             }
             EscDispatch => {
-                executor.esc_dispatch(self.intermediates.as_slice(), self.ignoring, byte);
+                executor.esc_dispatch(self.intermediate_handler.as_slice(), self.ignoring, byte);
             }
             Clear => {
                 self.subparam = Subparam::default();
@@ -324,7 +172,7 @@ impl Parser {
 
                 self.ignoring = false;
 
-                self.intermediates.clear();
+                self.intermediate_handler.clear();
             }
             Ignore => (),
         }
@@ -459,6 +307,7 @@ mod tests {
             }
 
             assert_eq!(dispatcher.dispatched.len(), 1);
+
             match &dispatcher.dispatched[0] {
                 Sequence::Osc(params, _) => {
                     assert_eq!(params.len(), MAX_OSC_PARAMS);
@@ -470,7 +319,7 @@ mod tests {
 
         #[test]
         fn exceed_max_buffer_size() {
-            static NUM_BYTES: usize = osc::MAX_OSC_PARAMS + 100;
+            static NUM_BYTES: usize = MAX_OSC_PARAMS + 100;
             static INPUT_START: &[u8] = &[0x1b, b']', b'5', b'2', b';', b's'];
             static INPUT_END: &[u8] = &[b'\x07'];
 
@@ -584,6 +433,7 @@ mod tests {
             }
 
             assert_eq!(dispatcher.dispatched.len(), 1);
+
             match &dispatcher.dispatched[0] {
                 Sequence::Csi(params, ..) => assert_eq!(params, &[[4], [0]]),
                 _ => panic!("expected csi sequence"),
@@ -611,6 +461,7 @@ mod tests {
         fn parse_long_param() {
             // The important part is the parameter, which is (i64::MAX + 1)
             static INPUT: &[u8] = b"\x1b[9223372036854775808m";
+
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
@@ -628,6 +479,7 @@ mod tests {
         #[test]
         fn reset() {
             static INPUT: &[u8] = b"\x1b[3;1\x1b[?1049h";
+
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
@@ -649,6 +501,7 @@ mod tests {
         #[test]
         fn subparameters() {
             static INPUT: &[u8] = b"\x1b[38:2:255:0:255;1m";
+
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
@@ -663,6 +516,50 @@ mod tests {
                     assert_eq!(params, &[vec![38, 2, 255, 0, 255], vec![1]]);
                     assert_eq!(intermediates, &[]);
                     assert!(!ignore);
+                }
+                _ => panic!("expected csi sequence"),
+            }
+        }
+
+        #[test]
+        fn params_buffer_filled_with_subparam() {
+            static INPUT: &[u8] = b"\x1b[::::::::::::::::::::::::::::::::;;;;;;;;;;;;;;;;x\x1b";
+
+            let mut dispatcher = Dispatcher::default();
+            let mut parser = Parser::new();
+
+            for byte in INPUT {
+                parser.advance(&mut dispatcher, *byte);
+            }
+
+            assert_eq!(dispatcher.dispatched.len(), 1);
+
+            match &dispatcher.dispatched[0] {
+                Sequence::Csi(params, intermediates, ignore, c) => {
+                    assert_eq!(intermediates, &[]);
+                    assert_eq!(
+                        *params,
+                        vec![
+                            vec![0; 32],
+                            vec![0],
+                            vec![0],
+                            vec![0],
+                            vec![0],
+                            vec![0],
+                            vec![0],
+                            vec![0],
+                            vec![0],
+                            vec![0],
+                            vec![0],
+                            vec![0],
+                            vec![0],
+                            vec![0],
+                            vec![0],
+                            vec![0],
+                        ]
+                    );
+                    assert_eq!(c, &'x');
+                    assert!(ignore);
                 }
                 _ => panic!("expected csi sequence"),
             }
@@ -786,49 +683,6 @@ mod tests {
                 }
                 _ => panic!("expected esc sequence"),
             }
-        }
-    }
-
-    #[test]
-    fn params_buffer_filled_with_subparam() {
-        static INPUT: &[u8] = b"\x1b[::::::::::::::::::::::::::::::::;;;;;;;;;;;;;;;;x\x1b";
-        let mut dispatcher = Dispatcher::default();
-        let mut parser = Parser::new();
-
-        for byte in INPUT {
-            parser.advance(&mut dispatcher, *byte);
-        }
-
-        assert_eq!(dispatcher.dispatched.len(), 1);
-
-        match &dispatcher.dispatched[0] {
-            Sequence::Csi(params, intermediates, ignore, c) => {
-                assert_eq!(intermediates, &[]);
-                assert_eq!(
-                    *params,
-                    vec![
-                        vec![0; 32],
-                        vec![0],
-                        vec![0],
-                        vec![0],
-                        vec![0],
-                        vec![0],
-                        vec![0],
-                        vec![0],
-                        vec![0],
-                        vec![0],
-                        vec![0],
-                        vec![0],
-                        vec![0],
-                        vec![0],
-                        vec![0],
-                        vec![0],
-                    ]
-                );
-                assert_eq!(c, &'x');
-                assert!(ignore);
-            }
-            _ => panic!("expected csi sequence"),
         }
     }
 }
