@@ -37,6 +37,10 @@ impl Parser {
         self.state_change(executor, state, action, byte);
     }
 
+    pub fn in_escape_sequence(&self) -> bool {
+        self.state != table::State::Ground
+    }
+
     fn state_change<E: Executor>(
         &mut self,
         executor: &mut E,
