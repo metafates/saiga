@@ -1,4 +1,4 @@
 #![feature(portable_simd)]
 
-mod action;
+mod processor;
 mod utf;
