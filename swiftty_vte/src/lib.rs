@@ -195,6 +195,7 @@ mod tests {
         DcsHook(Vec<Vec<u16>>, Vec<u8>, bool, char),
         DcsPut(u8),
         DcsUnhook,
+        Execute(u8),
     }
 
     impl Executor for Dispatcher {
@@ -245,7 +246,34 @@ mod tests {
 
         fn print(&mut self, _c: char) {}
 
-        fn execute(&mut self, _byte: u8) {}
+        fn execute(&mut self, byte: u8) {
+            self.dispatched.push(Sequence::Execute(byte))
+        }
+    }
+
+    mod c0_or_c1 {
+        use super::*;
+
+        #[test]
+        fn all() {
+            let mut dispatcher = Dispatcher::default();
+            let mut parser = Parser::new();
+
+            for byte in b"\x07\x08\x00\x85\x84" {
+                parser.advance(&mut dispatcher, *byte);
+            }
+
+            assert_eq!(
+                dispatcher.dispatched,
+                vec![
+                    Sequence::Execute(0x07),
+                    Sequence::Execute(0x08),
+                    Sequence::Execute(0x00),
+                    Sequence::Execute(0x85),
+                    Sequence::Execute(0x84),
+                ]
+            )
+        }
     }
 
     mod osc {

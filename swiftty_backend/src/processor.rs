@@ -1,23 +1,9 @@
-use std::{char, cmp::min};
+use std::cmp::min;
 
-use swiftty_vte::executor::{self, Executor};
+use swiftty_vte::executor::Executor;
 
-use crate::utf;
+use crate::utf8;
 
-//#[derive(Debug, PartialEq)]
-//enum Action {
-//    Print(char),
-//    Execute(u8),
-//    Put(u8),
-//    Unhook,
-//    CsiDispatch {
-//        params: Vec<Vec<u16>>,
-//        intermediates: Vec<u8>,
-//        ignore: bool,
-//        action: char,
-//    },
-//}
-//
 #[derive(Default)]
 struct Processor {
     utf8_bytes: [u8; 4],
@@ -46,7 +32,7 @@ impl Processor {
         let mut remaining_bytes = &bytes[i..];
 
         while !remaining_bytes.is_empty() {
-            let Some(next_sequence_start) = index_of(remaining_bytes, 0x1B) else {
+            let Some(next_sequence_start) = index_of_c0(remaining_bytes) else {
                 self.process_utf8(executor, remaining_bytes);
                 return;
             };
@@ -81,7 +67,7 @@ impl Processor {
             let want_bytes_count = {
                 if self.utf8_remaining_count > 0 {
                     self.utf8_remaining_count
-                } else if let Some(count) = utf::expected_utf8_bytes_count(remaining_bytes[0]) {
+                } else if let Some(count) = utf8::expected_bytes_count(remaining_bytes[0]) {
                     count
                 } else {
                     1
@@ -106,12 +92,33 @@ impl Processor {
     }
 
     fn consume_utf8<E: Executor>(&mut self, executor: &mut E) {
-        let ch = utf::char_from_utf8(&self.utf8_bytes[..self.utf8_len]);
+        let ch = utf8::into_char(&self.utf8_bytes[..self.utf8_len]);
         executor.print(ch);
 
         self.utf8_len = 0;
         self.utf8_remaining_count = 0;
     }
+}
+
+fn index_of_c0(haystack: &[u8]) -> Option<usize> {
+    static C0: [u8; 11] = [
+        0x1B, // ESC
+        0x0D, // Carriage return
+        0x08, // Backspace
+        0x07, // BEL
+        0x00, // NUL
+        0x09, 0x0A, 0x0B, 0x0C, 0x0E, 0x0F,
+    ];
+
+    for byte in C0 {
+        let index = index_of(haystack, byte);
+
+        if index.is_some() {
+            return index;
+        }
+    }
+
+    None
 }
 
 fn index_of(haystack: &[u8], needle: u8) -> Option<usize> {
@@ -139,6 +146,7 @@ mod tests {
             ignore: bool,
             action: char,
         },
+        Execute(u8),
     }
 
     #[derive(Default)]
@@ -169,8 +177,8 @@ mod tests {
             });
         }
 
-        fn execute(&mut self, _byte: u8) {
-            unimplemented!()
+        fn execute(&mut self, byte: u8) {
+            self.actions.push(Action::Execute(byte));
         }
 
         fn put(&mut self, _byte: u8) {
@@ -206,7 +214,11 @@ mod tests {
         let mut dispatcher = Dispatcher::default();
         let mut processor = Processor::new();
 
-        processor.process(&mut parser, &mut dispatcher, b"hello\x1b[38:2:255:0:255;1m");
+        processor.process(
+            &mut parser,
+            &mut dispatcher,
+            b"hello\x07\x1b[38:2:255:0:255;1m",
+        );
         processor.process(&mut parser, &mut dispatcher, &[0xD0]);
         processor.process(&mut parser, &mut dispatcher, &[0x96]);
         processor.process(&mut parser, &mut dispatcher, &[0xE6, 0xBC, 0xA2]);
@@ -220,6 +232,7 @@ mod tests {
                 Action::Print('l'),
                 Action::Print('l'),
                 Action::Print('o'),
+                Action::Execute(0x07),
                 Action::CsiDispatch {
                     params: vec![vec![38, 2, 255, 0, 255], vec![1]],
                     intermediates: vec![],

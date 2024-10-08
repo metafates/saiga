@@ -105,7 +105,7 @@ pub fn change_state(state: State, byte: u8) -> Option<(State, Option<Action>)> {
 
     match state {
         Anywhere => match byte {
-            0x18 | 0x1A | 0x80..=0x8F | 0x91..=0x97 | 0x99 | 0x9A => Some((Ground, Some(Execute))),
+            0x18 | 0x1A | 0x80..=0x8F | 0x91..=0x97 | 0x99..=0x9A => Some((Ground, Some(Execute))),
             0x1B => Some((Escape, None)),
             0x9C => Some((Ground, None)),
             0x98 | 0x9E | 0x9F => Some((SosPmApcString, None)),
