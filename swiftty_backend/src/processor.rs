@@ -45,7 +45,7 @@ impl Processor {
 
             self.process_utf8(executor, &remaining_bytes[..next_sequence_start]);
 
-            if self.utf8_is_ready_to_consume() {
+            if self.is_ready_to_consume_utf8() {
                 self.consume_utf8(executor);
             }
 
@@ -89,7 +89,7 @@ impl Processor {
 
             self.utf8_remaining_count = want_bytes_count - bytes_count;
 
-            if self.utf8_is_ready_to_consume() {
+            if self.is_ready_to_consume_utf8() {
                 self.consume_utf8(executor);
             }
 
@@ -98,7 +98,7 @@ impl Processor {
     }
 
     #[inline]
-    fn utf8_is_ready_to_consume(&self) -> bool {
+    fn is_ready_to_consume_utf8(&self) -> bool {
         self.utf8_remaining_count == 0 && self.utf8_len > 0
     }
 
