@@ -1,4 +1,10 @@
-use std::cmp::min;
+use core::str;
+use std::{
+    cmp::min,
+    collections::HashSet,
+    simd::{cmp::SimdPartialEq, num::SimdUint, u8x16, Simd},
+    sync::LazyLock,
+};
 
 use swiftty_vte::executor::Executor;
 
@@ -32,14 +38,14 @@ impl Processor {
         let mut remaining_bytes = &bytes[i..];
 
         while !remaining_bytes.is_empty() {
-            let Some(next_sequence_start) = index_of_c0(remaining_bytes) else {
+            let Some(next_sequence_start) = first_index_of_c0(remaining_bytes) else {
                 self.process_utf8(executor, remaining_bytes);
                 return;
             };
 
             self.process_utf8(executor, &remaining_bytes[..next_sequence_start]);
 
-            if self.utf8_remaining_count > 0 {
+            if self.utf8_is_ready_to_consume() {
                 self.consume_utf8(executor);
             }
 
@@ -83,12 +89,17 @@ impl Processor {
 
             self.utf8_remaining_count = want_bytes_count - bytes_count;
 
-            if self.utf8_remaining_count == 0 {
+            if self.utf8_is_ready_to_consume() {
                 self.consume_utf8(executor);
             }
 
             remaining_bytes = &remaining_bytes[bytes_count..];
         }
+    }
+
+    #[inline]
+    fn utf8_is_ready_to_consume(&self) -> bool {
+        self.utf8_remaining_count == 0 && self.utf8_len > 0
     }
 
     fn consume_utf8<E: Executor>(&mut self, executor: &mut E) {
@@ -100,34 +111,71 @@ impl Processor {
     }
 }
 
-fn index_of_c0(haystack: &[u8]) -> Option<usize> {
-    static C0: [u8; 11] = [
-        0x1B, // ESC
-        0x0D, // Carriage return
-        0x08, // Backspace
-        0x07, // BEL
-        0x00, // NUL
-        0x09, 0x0A, 0x0B, 0x0C, 0x0E, 0x0F,
-    ];
+static C0_ARRAY: [u8; 11] = [
+    0x1B, // Escape
+    0x0D, // Carriage return
+    0x08, // Backspace
+    0x07, // Bell
+    0x00, // Null
+    0x09, // Horizontal Tabulation
+    0x0A, // Line Feed
+    0x0B, // Vertical Tabulation
+    0x0C, // Form Feed
+    0x0E, // Shift Out
+    0x0F, // Shift In
+];
 
-    for byte in C0 {
-        let index = index_of(haystack, byte);
+static C0_SET: LazyLock<HashSet<u8>> = LazyLock::new(|| C0_ARRAY.into_iter().collect());
 
-        if index.is_some() {
-            return index;
+static C0_SPLATS: LazyLock<[Simd<u8, 16>; 11]> = LazyLock::new(|| C0_ARRAY.map(u8x16::splat));
+
+fn first_index_of_c0_scalar(haystack: &[u8]) -> Option<usize> {
+    for (i, b) in haystack.iter().enumerate() {
+        if C0_SET.contains(b) {
+            return Some(i);
         }
     }
 
     None
 }
 
-fn index_of(haystack: &[u8], needle: u8) -> Option<usize> {
-    // TODO: simd
+fn first_index_of_c0(haystack: &[u8]) -> Option<usize> {
+    const LANES: usize = 16;
 
-    for (i, byte) in haystack.iter().enumerate() {
-        if *byte == needle {
-            return Some(i);
+    let indices = u8x16::from_array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+    let nulls = u8x16::splat(u8::MAX);
+
+    let mut pos = 0;
+    let mut left = haystack.len();
+
+    while left > 0 {
+        if left < LANES {
+            return first_index_of_c0_scalar(haystack);
         }
+
+        let h = u8x16::from_slice(&haystack[pos..pos + LANES]);
+
+        let index = C0_SPLATS
+            .into_iter()
+            .filter_map(|splat| {
+                let matches = h.simd_eq(splat);
+
+                if matches.any() {
+                    let result = matches.select(indices, nulls);
+
+                    Some(result.reduce_min() as usize + pos)
+                } else {
+                    None
+                }
+            })
+            .min();
+
+        if index.is_some() {
+            return index;
+        }
+
+        pos += LANES;
+        left -= LANES;
     }
 
     None
@@ -244,5 +292,85 @@ mod tests {
                 Action::Print(char::REPLACEMENT_CHARACTER),
             ]
         );
+    }
+}
+
+#[cfg(test)]
+mod bench {
+    use super::*;
+    extern crate test;
+
+    const SAMPLE: &[u8] = b"this is a test for benchmarking processor\x07\x1b[38:2:255:0:255;1m\xD0\x96\xE6\xBC\xA2\xE6\xBC";
+
+    #[derive(Default)]
+    struct NopExecutor {}
+
+    impl Executor for NopExecutor {
+        fn print(&mut self, _c: char) {}
+
+        fn execute(&mut self, _byte: u8) {}
+
+        fn put(&mut self, _byte: u8) {}
+
+        fn hook(
+            &mut self,
+            _params: &swiftty_vte::param::Params,
+            _intermediates: &[u8],
+            _ignore: bool,
+            _action: char,
+        ) {
+        }
+
+        fn unhook(&mut self) {}
+
+        fn osc_dispatch(&mut self, _params: &[&[u8]], _bell_terminated: bool) {}
+
+        fn esc_dispatch(&mut self, __intermediates: &[u8], _ignore: bool, _byte: u8) {}
+
+        fn csi_dispatch(
+            &mut self,
+            _params: &swiftty_vte::param::Params,
+            _intermediates: &[u8],
+            _ignore: bool,
+            _action: char,
+        ) {
+        }
+    }
+
+    #[bench]
+    fn first_index_of_scalar(b: &mut test::Bencher) {
+        b.iter(|| {
+            first_index_of_c0_scalar(SAMPLE);
+        })
+    }
+    #[bench]
+    fn first_index_of_simd(b: &mut test::Bencher) {
+        b.iter(|| {
+            first_index_of_c0(SAMPLE);
+        })
+    }
+
+    #[bench]
+    fn process(b: &mut test::Bencher) {
+        b.iter(|| {
+            let mut parser = swiftty_vte::Parser::new();
+            let mut executor = NopExecutor::default();
+            let mut processor = Processor::new();
+
+            processor.process(&mut parser, &mut executor, SAMPLE);
+        })
+    }
+
+    #[bench]
+    fn utf8(b: &mut test::Bencher) {
+        b.iter(|| {
+            let mut executor = NopExecutor::default();
+            let mut processor = Processor::new();
+
+            processor.process_utf8(
+                &mut executor,
+                b"this is a test for benchmarking utf8 processing speed",
+            );
+        })
     }
 }

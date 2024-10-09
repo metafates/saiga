@@ -48,3 +48,14 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod bench {
+    use super::*;
+    extern crate test;
+
+    #[bench]
+    fn char(b: &mut test::Bencher) {
+        b.iter(|| into_char(b"\xD1\x86"))
+    }
+}
