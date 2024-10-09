@@ -1,5 +1,36 @@
 use std::char;
 
+use crate::utf8;
+
+const MAX_LENGTH: usize = 4;
+
+#[derive(Default)]
+pub struct UTF8Collector {
+    bytes: [u8; MAX_LENGTH],
+    len: usize,
+    pub remaining_count: usize,
+}
+
+impl UTF8Collector {
+    pub fn push(&mut self, byte: u8) {
+        self.bytes[self.len] = byte;
+        self.len += 1;
+    }
+
+    fn as_slice(&self) -> &[u8] {
+        &self.bytes[..self.len]
+    }
+
+    pub fn reset(&mut self) {
+        self.len = 0;
+        self.remaining_count = 0;
+    }
+
+    pub fn char(&self) -> char {
+        utf8::into_char(self.as_slice())
+    }
+}
+
 pub fn expected_bytes_count(first_byte: u8) -> Option<usize> {
     #[rustfmt::skip]
     static LENGTHS: [usize; 32] = [

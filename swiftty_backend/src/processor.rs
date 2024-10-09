@@ -6,35 +6,8 @@ use swiftty_vte::executor::Executor;
 use crate::utf8;
 
 #[derive(Default)]
-struct UTF8Collector {
-    bytes: [u8; 4],
-    len: usize,
-    remaining_count: usize,
-}
-
-impl UTF8Collector {
-    //fn push(&mut self, byte: u8) {
-    //    self.bytes[self.len] = byte;
-    //    self.len += 1;
-    //}
-
-    fn as_slice(&self) -> &[u8] {
-        &self.bytes[..self.len]
-    }
-
-    fn reset(&mut self) {
-        self.len = 0;
-        self.remaining_count = 0;
-    }
-
-    fn char(&self) -> char {
-        utf8::into_char(self.as_slice())
-    }
-}
-
-#[derive(Default)]
 struct Processor {
-    utf8: UTF8Collector,
+    utf8: utf8::UTF8Collector,
 }
 
 impl Processor {
@@ -111,8 +84,7 @@ impl Processor {
             let bytes_count = min(want_bytes_count, remaining_bytes.len());
 
             for i in 0..bytes_count {
-                self.utf8.bytes[self.utf8.len] = remaining_bytes[i];
-                self.utf8.len += 1;
+                self.utf8.push(remaining_bytes[i]);
             }
 
             self.utf8.remaining_count = want_bytes_count - bytes_count;
