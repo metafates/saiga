@@ -1,5 +1,6 @@
 use core::str;
 use std::{
+    char,
     cmp::min,
     collections::HashSet,
     simd::{cmp::SimdPartialEq, num::SimdUint, u8x16, Simd},
@@ -45,8 +46,9 @@ impl Processor {
 
             self.process_utf8(executor, &remaining_bytes[..next_sequence_start]);
 
-            if self.is_ready_to_consume_utf8() {
-                self.consume_utf8(executor);
+            if self.utf8_remaining_count > 0 {
+                executor.print(char::REPLACEMENT_CHARACTER);
+                self.reset_utf8();
             }
 
             remaining_bytes = &remaining_bytes[next_sequence_start..];
@@ -70,15 +72,22 @@ impl Processor {
         let mut remaining_bytes = bytes;
 
         while !remaining_bytes.is_empty() {
-            let want_bytes_count = {
-                if self.utf8_remaining_count > 0 {
-                    self.utf8_remaining_count
-                } else if let Some(count) = utf8::expected_bytes_count(remaining_bytes[0]) {
-                    count
-                } else {
-                    1
+            let want_bytes_count: usize;
+
+            if self.utf8_remaining_count > 0 {
+                want_bytes_count = self.utf8_remaining_count
+            } else if let Some(count) = utf8::expected_bytes_count(remaining_bytes[0]) {
+                // Optimize for ASCII
+                if count == 1 {
+                    executor.print(remaining_bytes[0] as char);
+                    remaining_bytes = &remaining_bytes[1..];
+                    continue;
                 }
-            };
+
+                want_bytes_count = count;
+            } else {
+                want_bytes_count = 1;
+            }
 
             let bytes_count = min(want_bytes_count, remaining_bytes.len());
 
@@ -89,7 +98,7 @@ impl Processor {
 
             self.utf8_remaining_count = want_bytes_count - bytes_count;
 
-            if self.is_ready_to_consume_utf8() {
+            if self.utf8_remaining_count == 0 {
                 self.consume_utf8(executor);
             }
 
@@ -97,15 +106,15 @@ impl Processor {
         }
     }
 
-    #[inline]
-    fn is_ready_to_consume_utf8(&self) -> bool {
-        self.utf8_remaining_count == 0 && self.utf8_len > 0
-    }
-
     fn consume_utf8<E: Executor>(&mut self, executor: &mut E) {
         let ch = utf8::into_char(&self.utf8_bytes[..self.utf8_len]);
         executor.print(ch);
 
+        self.reset_utf8();
+    }
+
+    #[inline]
+    fn reset_utf8(&mut self) {
         self.utf8_len = 0;
         self.utf8_remaining_count = 0;
     }
