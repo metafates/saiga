@@ -1,7 +1,9 @@
+pub mod ansi;
 pub mod executor;
+pub mod param;
+
 mod intermediate;
 mod osc;
-pub mod param;
 mod table;
 
 use executor::Executor;

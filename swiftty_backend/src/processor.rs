@@ -1,21 +1,40 @@
-use core::str;
-use std::{
-    char,
-    cmp::min,
-    collections::HashSet,
-    simd::{cmp::SimdPartialEq, num::SimdUint, u8x16, Simd},
-    sync::LazyLock,
-};
+use crate::ansi;
+use std::cmp::min;
 
 use swiftty_vte::executor::Executor;
 
 use crate::utf8;
 
 #[derive(Default)]
+struct UTF8Collector {
+    bytes: [u8; 4],
+    len: usize,
+    remaining_count: usize,
+}
+
+impl UTF8Collector {
+    //fn push(&mut self, byte: u8) {
+    //    self.bytes[self.len] = byte;
+    //    self.len += 1;
+    //}
+
+    fn as_slice(&self) -> &[u8] {
+        &self.bytes[..self.len]
+    }
+
+    fn reset(&mut self) {
+        self.len = 0;
+        self.remaining_count = 0;
+    }
+
+    fn char(&self) -> char {
+        utf8::into_char(self.as_slice())
+    }
+}
+
+#[derive(Default)]
 struct Processor {
-    utf8_bytes: [u8; 4],
-    utf8_len: usize,
-    utf8_remaining_count: usize,
+    utf8: UTF8Collector,
 }
 
 impl Processor {
@@ -39,16 +58,16 @@ impl Processor {
         let mut remaining_bytes = &bytes[i..];
 
         while !remaining_bytes.is_empty() {
-            let Some(next_sequence_start) = first_index_of_c0(remaining_bytes) else {
+            let Some(next_sequence_start) = ansi::first_index_of_c0(remaining_bytes) else {
                 self.process_utf8(executor, remaining_bytes);
                 return;
             };
 
             self.process_utf8(executor, &remaining_bytes[..next_sequence_start]);
 
-            if self.utf8_remaining_count > 0 {
+            if self.utf8.remaining_count > 0 {
                 executor.print(char::REPLACEMENT_CHARACTER);
-                self.reset_utf8();
+                self.utf8.reset();
             }
 
             remaining_bytes = &remaining_bytes[next_sequence_start..];
@@ -74,8 +93,8 @@ impl Processor {
         while !remaining_bytes.is_empty() {
             let want_bytes_count: usize;
 
-            if self.utf8_remaining_count > 0 {
-                want_bytes_count = self.utf8_remaining_count
+            if self.utf8.remaining_count > 0 {
+                want_bytes_count = self.utf8.remaining_count
             } else if let Some(count) = utf8::expected_bytes_count(remaining_bytes[0]) {
                 // Optimize for ASCII
                 if count == 1 {
@@ -92,13 +111,13 @@ impl Processor {
             let bytes_count = min(want_bytes_count, remaining_bytes.len());
 
             for i in 0..bytes_count {
-                self.utf8_bytes[self.utf8_len] = remaining_bytes[i];
-                self.utf8_len += 1;
+                self.utf8.bytes[self.utf8.len] = remaining_bytes[i];
+                self.utf8.len += 1;
             }
 
-            self.utf8_remaining_count = want_bytes_count - bytes_count;
+            self.utf8.remaining_count = want_bytes_count - bytes_count;
 
-            if self.utf8_remaining_count == 0 {
+            if self.utf8.remaining_count == 0 {
                 self.consume_utf8(executor);
             }
 
@@ -107,87 +126,10 @@ impl Processor {
     }
 
     fn consume_utf8<E: Executor>(&mut self, executor: &mut E) {
-        let ch = utf8::into_char(&self.utf8_bytes[..self.utf8_len]);
-        executor.print(ch);
+        executor.print(self.utf8.char());
 
-        self.reset_utf8();
+        self.utf8.reset();
     }
-
-    #[inline]
-    fn reset_utf8(&mut self) {
-        self.utf8_len = 0;
-        self.utf8_remaining_count = 0;
-    }
-}
-
-static C0_ARRAY: [u8; 11] = [
-    0x1B, // Escape
-    0x0D, // Carriage return
-    0x08, // Backspace
-    0x07, // Bell
-    0x00, // Null
-    0x09, // Horizontal Tabulation
-    0x0A, // Line Feed
-    0x0B, // Vertical Tabulation
-    0x0C, // Form Feed
-    0x0E, // Shift Out
-    0x0F, // Shift In
-];
-
-static C0_SET: LazyLock<HashSet<u8>> = LazyLock::new(|| C0_ARRAY.into_iter().collect());
-
-static C0_SPLATS: LazyLock<[Simd<u8, 16>; 11]> = LazyLock::new(|| C0_ARRAY.map(u8x16::splat));
-
-fn first_index_of_c0_scalar(haystack: &[u8]) -> Option<usize> {
-    for (i, b) in haystack.iter().enumerate() {
-        if C0_SET.contains(b) {
-            return Some(i);
-        }
-    }
-
-    None
-}
-
-fn first_index_of_c0(haystack: &[u8]) -> Option<usize> {
-    const LANES: usize = 16;
-
-    let indices = u8x16::from_array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
-    let nulls = u8x16::splat(u8::MAX);
-
-    let mut pos = 0;
-    let mut left = haystack.len();
-
-    while left > 0 {
-        if left < LANES {
-            return first_index_of_c0_scalar(haystack);
-        }
-
-        let h = u8x16::from_slice(&haystack[pos..pos + LANES]);
-
-        let index = C0_SPLATS
-            .into_iter()
-            .filter_map(|splat| {
-                let matches = h.simd_eq(splat);
-
-                if matches.any() {
-                    let result = matches.select(indices, nulls);
-
-                    Some(result.reduce_min() as usize + pos)
-                } else {
-                    None
-                }
-            })
-            .min();
-
-        if index.is_some() {
-            return index;
-        }
-
-        pos += LANES;
-        left -= LANES;
-    }
-
-    None
 }
 
 #[cfg(test)]
@@ -344,19 +286,6 @@ mod bench {
             _action: char,
         ) {
         }
-    }
-
-    #[bench]
-    fn first_index_of_scalar(b: &mut test::Bencher) {
-        b.iter(|| {
-            first_index_of_c0_scalar(SAMPLE);
-        })
-    }
-    #[bench]
-    fn first_index_of_simd(b: &mut test::Bencher) {
-        b.iter(|| {
-            first_index_of_c0(SAMPLE);
-        })
     }
 
     #[bench]
