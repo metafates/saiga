@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-swiftty_vte = { path = "../swiftty_vte" }
+saiga_vte = { path = "../saiga_vte" }
 

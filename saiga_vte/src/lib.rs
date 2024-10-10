@@ -678,7 +678,7 @@ mod tests {
 
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
-                Sequence::Csi(params, ..) => assert_eq!(params, &[[std::u16::MAX as u16]]),
+                Sequence::Csi(params, ..) => assert_eq!(params, &[[u16::MAX]]),
                 _ => panic!("expected csi sequence"),
             }
         }
@@ -924,7 +924,7 @@ mod bench {
 
     extern crate test;
 
-    const SAMPLE: &[u8] = b"this is a test for benchmarking processor\x07\x1b[38:2:255:0:255;1m\xD0\x96\xE6\xBC\xA2\xE6\xBC";
+    const SAMPLE: &[u8] = b"this is a test for benchmarking parser\x07\x1b[38:2:255:0:255;1m\xD0\x96\xE6\xBC\xA2\xE6\xBC";
 
     #[derive(Default)]
     struct NopExecutor {}
