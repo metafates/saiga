@@ -292,20 +292,27 @@ impl Parser {
         byte: u8,
     ) {
         // moving to Anywhere means executing current action right away
-        if state == State::Anywhere && action.is_some() {
-            self.execute_action(executor, action.unwrap(), byte);
-            return;
+        match state {
+            State::Anywhere => {
+                let Some(action) = action else {
+                    return;
+                };
+
+                self.execute_action(executor, action, byte);
+            }
+            state => {
+                self.execute_state_exit_action(executor, byte);
+
+                // transition
+                if let Some(action) = action {
+                    self.execute_action(executor, action, byte);
+                }
+
+                self.state = state;
+
+                self.execute_state_entry_action(executor, byte);
+            }
         }
-
-        self.execute_state_exit_action(executor, byte);
-
-        // transition
-        if let Some(action) = action {
-            self.execute_action(executor, action, byte);
-        }
-
-        self.state = state;
-        self.execute_state_entry_action(executor, byte);
     }
 
     fn execute_state_entry_action<E: Executor>(&mut self, executor: &mut E, byte: u8) {
@@ -950,11 +957,10 @@ mod tests {
 
 #[cfg(test)]
 mod bench {
+
     use super::*;
 
     extern crate test;
-
-    const SAMPLE: &[u8] = b"this is a test for benchmarking parser\x07\x1b[38:2:255:0:255;1m\xD0\x96\xE6\xBC\xA2\xE6\xBC";
 
     #[derive(Default)]
     struct NopExecutor {}
@@ -984,13 +990,46 @@ mod bench {
         }
     }
 
+    fn get_input() -> Vec<u8> {
+        let mut v = Vec::new();
+
+        for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ".chars() {
+            for i in 1..=10 {
+                for j in 1..=10 {
+                    v.extend(format!("\x1B[{i};{j}H{c}").as_bytes());
+                    v.extend(format!("some ascii with unicode ݖݗݘݙݚݛݜݝݞݟݠݡ").as_bytes());
+                }
+            }
+        }
+
+        v
+    }
+
     #[bench]
-    fn process(b: &mut test::Bencher) {
+    fn advance_batch(b: &mut test::Bencher) {
+        let input = get_input();
+
         b.iter(|| {
             let mut parser = Parser::new();
             let mut executor = NopExecutor::default();
 
-            parser.advance(&mut executor, SAMPLE);
+            for chunk in input.chunks(16) {
+                parser.advance(&mut executor, chunk);
+            }
+        })
+    }
+
+    #[bench]
+    fn advance_sequential(b: &mut test::Bencher) {
+        let input = get_input();
+
+        b.iter(|| {
+            let mut parser = Parser::new();
+            let mut executor = NopExecutor::default();
+
+            for byte in input.iter() {
+                parser.advance(&mut executor, &[*byte]);
+            }
         })
     }
 

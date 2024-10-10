@@ -34,6 +34,7 @@ pub trait Handler {
 
     fn ring_bell(&mut self);
 
-    // TODO
+    fn put_tab(&mut self);
+    fn backspace(&mut self);
+    fn linefeed(&mut self);
 }
-
