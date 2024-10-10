@@ -1,17 +1,16 @@
 #![feature(test)]
 #![feature(portable_simd)]
+
 pub mod ansi;
-pub mod executor;
 pub mod param;
 
 mod table;
-pub mod utf8;
+mod utf8;
 
-use std::cmp::min;
-use executor::Executor;
+use ansi::c0;
 use param::{Params, Subparam};
+use std::cmp::min;
 use table::{Action, State};
-use crate::ansi::c0;
 
 /// X3.64 doesn’t place any limit on the number of intermediate characters allowed before a final character,
 /// although it doesn’t define any control sequences with more than one.
@@ -19,6 +18,54 @@ use crate::ansi::c0;
 /// and control sequences and device control strings with one.
 const MAX_INTERMEDIATES: usize = 2;
 
+/// There is no limit to the number of characters in a parameter string,
+/// although a maximum of 16 parameters need be stored.
+const MAX_OSC_PARAMS: usize = 16;
+
+pub trait Executor {
+    /// Draw a character to the screen.
+    fn print(&mut self, c: char);
+
+    /// Execute C0 or C1 control function
+    fn execute(&mut self, byte: u8);
+
+    /// Pass bytes as part of a device control string to the handle chosen in `hook`. C0 controls
+    /// will also be passed to the handler.
+    fn put(&mut self, byte: u8);
+
+    /// Invoked when a final character arrives in first part of device control string.
+    ///
+    /// The control function should be determined from the private marker, final character, and
+    /// execute with a parameter list. A handler should be selected for remaining characters in the
+    /// string; the handler function should subsequently be called by `put` for every character in
+    /// the control string.
+    ///
+    /// The `ignore` flag indicates that more than two intermediates arrived and
+    /// subsequent characters were ignored.
+    fn hook(&mut self, params: &Params, intermediates: &[u8], ignore: bool, action: char);
+
+    /// Called when a device control string is terminated.
+    ///
+    /// The previously selected handler should be notified that the DCS has
+    /// terminated.
+    fn unhook(&mut self);
+
+    /// Dispatch an operating system command.
+    fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool);
+
+    /// The final character of an escape sequence has arrived.
+    ///
+    /// The `ignore` flag indicates that more than two intermediates arrived and
+    /// subsequent characters were ignored.
+    fn esc_dispatch(&mut self, intermediates: &[u8], ignore: bool, byte: u8);
+
+    /// A final character has arrived for a CSI sequence
+    ///
+    /// The `ignore` flag indicates that either more than two intermediates arrived
+    /// or the number of parameters exceeded the maximum supported length,
+    /// and subsequent characters were ignored.
+    fn csi_dispatch(&mut self, params: &Params, intermediates: &[u8], ignore: bool, action: char);
+}
 #[derive(Default)]
 pub struct Intermediates {
     array: [u8; MAX_INTERMEDIATES],
@@ -47,11 +94,6 @@ impl Intermediates {
         self.index = 0
     }
 }
-
-/// There is no limit to the number of characters in a parameter string,
-/// although a maximum of 16 parameters need be stored.
-pub const MAX_OSC_PARAMS: usize = 16;
-
 
 #[derive(Default)]
 pub struct OscHandler {
@@ -122,7 +164,7 @@ impl OscHandler {
 
         let params = &slices[..self.params_num];
 
-        executor.osc_dispatch(params, byte == 0x07)
+        executor.osc_dispatch(params, byte == ansi::c0::BEL)
     }
 }
 #[derive(Default)]
@@ -146,15 +188,11 @@ impl Parser {
         Self::default()
     }
 
-    pub fn process<E: Executor>(
-        &mut self,
-        executor: &mut E,
-        bytes: &[u8],
-    ) {
+    pub fn advance<E: Executor>(&mut self, executor: &mut E, bytes: &[u8]) {
         let mut i = 0;
 
         while self.in_escape_sequence() && i < bytes.len() {
-            self.advance(executor, bytes[i]);
+            self.advance_sequence(executor, bytes[i]);
             i += 1;
         }
 
@@ -162,11 +200,11 @@ impl Parser {
 
         while !remaining_bytes.is_empty() {
             let Some(next_sequence_start) = c0::first_index_of_c0(remaining_bytes) else {
-                self.process_utf8(executor, remaining_bytes);
+                self.advance_utf8(executor, remaining_bytes);
                 return;
             };
 
-            self.process_utf8(executor, &remaining_bytes[..next_sequence_start]);
+            self.advance_utf8(executor, &remaining_bytes[..next_sequence_start]);
 
             if self.utf8.remaining_count > 0 {
                 executor.print(char::REPLACEMENT_CHARACTER);
@@ -178,7 +216,7 @@ impl Parser {
             let mut i = 0;
 
             loop {
-                self.advance(executor, remaining_bytes[i]);
+                self.advance_sequence(executor, remaining_bytes[i]);
                 i += 1;
 
                 if !(self.in_escape_sequence() && i < remaining_bytes.len()) {
@@ -190,7 +228,7 @@ impl Parser {
         }
     }
 
-    fn process_utf8<E: Executor>(&mut self, executor: &mut E, bytes: &[u8]) {
+    fn advance_utf8<E: Executor>(&mut self, executor: &mut E, bytes: &[u8]) {
         let mut remaining_bytes = bytes;
 
         while !remaining_bytes.is_empty() {
@@ -233,11 +271,11 @@ impl Parser {
         self.utf8.reset();
     }
 
-    fn advance<E: Executor>(&mut self, executor: &mut E, byte: u8) {
+    fn advance_sequence<E: Executor>(&mut self, executor: &mut E, byte: u8) {
         let change = table::change_state(State::Anywhere, byte)
             .or_else(|| table::change_state(self.state, byte));
 
-        let (state, action) = change.expect("must be known");
+        let (state, action) = change.expect("state change must be known for any input");
 
         self.state_change(executor, state, action, byte);
     }
@@ -467,7 +505,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            parser.process(&mut dispatcher, b"\x07\x08\x00");
+            parser.advance(&mut dispatcher, b"\x07\x08\x00");
 
             assert_eq!(
                 dispatcher.dispatched,
@@ -495,7 +533,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            parser.process(&mut dispatcher, OSC_BYTES);
+            parser.advance(&mut dispatcher, OSC_BYTES);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
@@ -513,7 +551,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            parser.process(&mut dispatcher, &[0x1b, 0x5d, 0x07]);
+            parser.advance(&mut dispatcher, &[0x1b, 0x5d, 0x07]);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
@@ -529,7 +567,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            parser.process(&mut dispatcher, input.as_slice());
+            parser.advance(&mut dispatcher, input.as_slice());
 
             assert_eq!(dispatcher.dispatched.len(), 1);
 
@@ -552,13 +590,13 @@ mod tests {
             let mut parser = Parser::new();
 
             // Create valid OSC escape
-            parser.process(&mut dispatcher, INPUT_START);
+            parser.advance(&mut dispatcher, INPUT_START);
 
             // Exceed max buffer size
-            parser.process(&mut dispatcher, [b'a'].repeat(NUM_BYTES).as_slice());
+            parser.advance(&mut dispatcher, [b'a'].repeat(NUM_BYTES).as_slice());
 
             // Terminate escape for dispatch
-            parser.process(&mut dispatcher, INPUT_END);
+            parser.advance(&mut dispatcher, INPUT_END);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
@@ -577,7 +615,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            parser.process(&mut dispatcher, INPUT);
+            parser.advance(&mut dispatcher, INPUT);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
@@ -601,7 +639,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            parser.process(&mut dispatcher, &input);
+            parser.advance(&mut dispatcher, &input);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
@@ -624,7 +662,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            parser.process(&mut dispatcher, &input);
+            parser.advance(&mut dispatcher, &input);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
@@ -641,7 +679,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            parser.process(&mut dispatcher, b"\x1b[4;m" );
+            parser.advance(&mut dispatcher, b"\x1b[4;m");
 
             assert_eq!(dispatcher.dispatched.len(), 1);
 
@@ -657,7 +695,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            parser.process(&mut dispatcher, b"\x1b[;4m");
+            parser.advance(&mut dispatcher, b"\x1b[;4m");
 
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
@@ -674,7 +712,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            parser.process(&mut dispatcher, INPUT);
+            parser.advance(&mut dispatcher, INPUT);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
@@ -690,7 +728,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            parser.process(&mut dispatcher, INPUT);
+            parser.advance(&mut dispatcher, INPUT);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
@@ -710,7 +748,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            parser.process(&mut dispatcher, INPUT);
+            parser.advance(&mut dispatcher, INPUT);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
 
@@ -731,7 +769,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            parser.process(&mut dispatcher, INPUT);
+            parser.advance(&mut dispatcher, INPUT);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
 
@@ -777,7 +815,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            parser.process(&mut dispatcher, &input);
+            parser.advance(&mut dispatcher, &input);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
@@ -796,7 +834,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            parser.process(&mut dispatcher, INPUT);
+            parser.advance(&mut dispatcher, INPUT);
 
             assert_eq!(dispatcher.dispatched.len(), 3);
 
@@ -819,7 +857,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            parser.process(&mut dispatcher, INPUT);
+            parser.advance(&mut dispatcher, INPUT);
 
             assert_eq!(dispatcher.dispatched.len(), 7);
 
@@ -844,7 +882,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            parser.process(&mut dispatcher, INPUT);
+            parser.advance(&mut dispatcher, INPUT);
 
             assert_eq!(dispatcher.dispatched.len(), 6);
             match &dispatcher.dispatched[5] {
@@ -863,7 +901,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            parser.process(&mut dispatcher, INPUT);
+            parser.advance(&mut dispatcher, INPUT);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
@@ -885,14 +923,11 @@ mod tests {
             let mut parser = Parser::new();
             let mut dispatcher = Dispatcher::default();
 
-            parser.process(
-                &mut dispatcher,
-                b"hello\x07\x1b[38:2:255:0:255;1m",
-            );
-            parser.process(&mut dispatcher, &[0xD0]);
-            parser.process(&mut dispatcher, &[0x96]);
-            parser.process(&mut dispatcher, &[0xE6, 0xBC, 0xA2]);
-            parser.process(&mut dispatcher, &[0xE6, 0xBC, 0x1B]); // abort utf8 sequence
+            parser.advance(&mut dispatcher, b"hello\x07\x1b[38:2:255:0:255;1m");
+            parser.advance(&mut dispatcher, &[0xD0]);
+            parser.advance(&mut dispatcher, &[0x96]);
+            parser.advance(&mut dispatcher, &[0xE6, 0xBC, 0xA2]);
+            parser.advance(&mut dispatcher, &[0xE6, 0xBC, 0x1B]); // abort utf8 sequence
 
             assert_eq!(
                 dispatcher.dispatched,
@@ -903,12 +938,7 @@ mod tests {
                     Sequence::Print('l'),
                     Sequence::Print('o'),
                     Sequence::Execute(0x07),
-                    Sequence::Csi(
-                        vec![vec![38, 2, 255, 0, 255], vec![1]],
-                        vec![],
-                        false,
-                        'm',
-                    ),
+                    Sequence::Csi(vec![vec![38, 2, 255, 0, 255], vec![1]], vec![], false, 'm',),
                     Sequence::Print('Ж'),
                     Sequence::Print('漢'),
                     Sequence::Print(char::REPLACEMENT_CHARACTER),
@@ -936,14 +966,7 @@ mod bench {
 
         fn put(&mut self, _byte: u8) {}
 
-        fn hook(
-            &mut self,
-            _params: &crate::param::Params,
-            _intermediates: &[u8],
-            _ignore: bool,
-            _action: char,
-        ) {
-        }
+        fn hook(&mut self, _params: &Params, _intermediates: &[u8], _ignore: bool, _action: char) {}
 
         fn unhook(&mut self) {}
 
@@ -953,7 +976,7 @@ mod bench {
 
         fn csi_dispatch(
             &mut self,
-            _params: &crate::param::Params,
+            _params: &Params,
             _intermediates: &[u8],
             _ignore: bool,
             _action: char,
@@ -967,7 +990,7 @@ mod bench {
             let mut parser = Parser::new();
             let mut executor = NopExecutor::default();
 
-            parser.process(&mut executor, SAMPLE);
+            parser.advance(&mut executor, SAMPLE);
         })
     }
 
@@ -1006,10 +1029,7 @@ mod bench {
             let mut parser = Parser::new();
 
             b.iter(|| {
-                parser.process_utf8(
-                    &mut executor,
-                    INPUT_NON_ASCII,
-                );
+                parser.advance_utf8(&mut executor, INPUT_NON_ASCII);
             })
         }
 
@@ -1019,10 +1039,7 @@ mod bench {
             let mut parser = Parser::new();
 
             b.iter(|| {
-                parser.process_utf8(
-                    &mut executor,
-                    INPUT_ASCII,
-                );
+                parser.advance_utf8(&mut executor, INPUT_ASCII);
             })
         }
     }
