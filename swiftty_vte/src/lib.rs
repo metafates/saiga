@@ -1,26 +1,138 @@
+#![feature(test)]
+#![feature(portable_simd)]
 pub mod ansi;
 pub mod executor;
 pub mod param;
 
-mod intermediate;
-mod osc;
 mod table;
+pub mod utf8;
 
 use executor::Executor;
-use osc::MAX_OSC_PARAMS;
 use param::{Params, Subparam};
 use table::{Action, State};
 
+/// X3.64 doesn’t place any limit on the number of intermediate characters allowed before a final character,
+/// although it doesn’t define any control sequences with more than one.
+/// Digital defined escape sequences with two intermediate characters,
+/// and control sequences and device control strings with one.
+const MAX_INTERMEDIATES: usize = 2;
+
+#[derive(Default)]
+pub struct Intermediates {
+    array: [u8; MAX_INTERMEDIATES],
+    index: usize,
+}
+
+impl Intermediates {
+    pub fn as_slice(&self) -> &[u8] {
+        &self.array[..self.index]
+    }
+
+    pub fn is_full(&self) -> bool {
+        self.index == MAX_INTERMEDIATES
+    }
+
+    pub fn push(&mut self, byte: u8) {
+        if self.is_full() {
+            return;
+        }
+
+        self.array[self.index] = byte;
+        self.index += 1;
+    }
+
+    pub fn clear(&mut self) {
+        self.index = 0
+    }
+}
+
+/// There is no limit to the number of characters in a parameter string,
+/// although a maximum of 16 parameters need be stored.
+pub const MAX_OSC_PARAMS: usize = 16;
+
+
+#[derive(Default)]
+pub struct OscHandler {
+    params: [(usize, usize); MAX_OSC_PARAMS],
+    params_num: usize,
+    raw: Vec<u8>,
+}
+
+impl OscHandler {
+    pub fn start(&mut self) {
+        self.raw.clear();
+        self.params_num = 0;
+    }
+
+    pub fn put(&mut self, byte: u8) {
+        let idx = self.raw.len();
+
+        if byte != param::PARAM_SEPARATOR {
+            self.raw.push(byte);
+            return;
+        }
+
+        // handle param separator
+
+        match self.params_num {
+            MAX_OSC_PARAMS => return,
+
+            0 => self.params[0] = (0, idx),
+
+            param_idx => {
+                let prev = self.params[param_idx - 1];
+
+                self.params[param_idx] = (prev.1, idx)
+            }
+        }
+
+        self.params_num += 1;
+    }
+
+    pub fn end<E: Executor>(&mut self, executor: &mut E, byte: u8) {
+        let idx = self.raw.len();
+
+        match self.params_num {
+            MAX_OSC_PARAMS => (),
+
+            0 => {
+                self.params[0] = (0, idx);
+                self.params_num += 1;
+            }
+
+            param_idx => {
+                let prev = self.params[param_idx - 1];
+
+                self.params[param_idx] = (prev.1, idx);
+                self.params_num += 1;
+            }
+        }
+
+        self.dispatch(executor, byte);
+    }
+
+    pub fn dispatch<E: Executor>(&self, executor: &mut E, byte: u8) {
+        let slices: Vec<&[u8]> = self
+            .params
+            .iter()
+            .map(|(start, end)| &self.raw[*start..*end])
+            .collect();
+
+        let params = &slices[..self.params_num];
+
+        executor.osc_dispatch(params, byte == 0x07)
+    }
+}
 #[derive(Default)]
 pub struct Parser {
     state: State,
 
-    osc_handler: osc::Handler,
+    osc_handler: OscHandler,
 
     params: Params,
     subparam: Subparam,
 
-    intermediate_handler: intermediate::Handler,
+    intermediate_handler: Intermediates,
 
     ignoring: bool,
 }
@@ -40,7 +152,7 @@ impl Parser {
     }
 
     pub fn in_escape_sequence(&self) -> bool {
-        self.state != table::State::Ground
+        self.state != State::Ground
     }
 
     fn state_change<E: Executor>(

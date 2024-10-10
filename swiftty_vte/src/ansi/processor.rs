@@ -1,9 +1,8 @@
-use crate::ansi;
 use std::cmp::min;
 
-use swiftty_vte::executor::Executor;
-
-use crate::utf8;
+use crate::{Parser, utf8};
+use crate::ansi::c0;
+use crate::executor::Executor;
 
 #[derive(Default)]
 struct Processor {
@@ -17,7 +16,7 @@ impl Processor {
 
     pub fn process<E: Executor>(
         &mut self,
-        parser: &mut swiftty_vte::Parser,
+        parser: &mut Parser,
         executor: &mut E,
         bytes: &[u8],
     ) {
@@ -31,7 +30,7 @@ impl Processor {
         let mut remaining_bytes = &bytes[i..];
 
         while !remaining_bytes.is_empty() {
-            let Some(next_sequence_start) = ansi::first_index_of_c0(remaining_bytes) else {
+            let Some(next_sequence_start) = c0::first_index_of_c0(remaining_bytes) else {
                 self.process_utf8(executor, remaining_bytes);
                 return;
             };
@@ -132,7 +131,7 @@ mod tests {
 
         fn csi_dispatch(
             &mut self,
-            params: &swiftty_vte::param::Params,
+            params: &crate::param::Params,
             intermediates: &[u8],
             ignore: bool,
             action: char,
@@ -158,7 +157,7 @@ mod tests {
 
         fn hook(
             &mut self,
-            _params: &swiftty_vte::param::Params,
+            _params: &crate::param::Params,
             _intermediates: &[u8],
             _ignore: bool,
             _action: char,
@@ -181,7 +180,7 @@ mod tests {
 
     #[test]
     fn process_mixed() {
-        let mut parser = swiftty_vte::Parser::new();
+        let mut parser = Parser::new();
         let mut dispatcher = Dispatcher::default();
         let mut processor = Processor::new();
 
@@ -237,7 +236,7 @@ mod bench {
 
         fn hook(
             &mut self,
-            _params: &swiftty_vte::param::Params,
+            _params: &crate::param::Params,
             _intermediates: &[u8],
             _ignore: bool,
             _action: char,
@@ -252,7 +251,7 @@ mod bench {
 
         fn csi_dispatch(
             &mut self,
-            _params: &swiftty_vte::param::Params,
+            _params: &crate::param::Params,
             _intermediates: &[u8],
             _ignore: bool,
             _action: char,
@@ -263,7 +262,7 @@ mod bench {
     #[bench]
     fn process(b: &mut test::Bencher) {
         b.iter(|| {
-            let mut parser = swiftty_vte::Parser::new();
+            let mut parser = Parser::new();
             let mut executor = NopExecutor::default();
             let mut processor = Processor::new();
 
@@ -284,3 +283,4 @@ mod bench {
         })
     }
 }
+

@@ -5,5 +5,4 @@ edition = "2021"
 
 [dependencies]
 swiftty_vte = { path = "../swiftty_vte" }
-simdutf8 = "0.1.5"
 

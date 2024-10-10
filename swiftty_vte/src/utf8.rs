@@ -1,7 +1,5 @@
 use std::char;
 
-use crate::utf8;
-
 const MAX_LENGTH: usize = 4;
 
 #[derive(Default)]
@@ -27,7 +25,7 @@ impl UTF8Collector {
     }
 
     pub fn char(&self) -> char {
-        utf8::into_char(self.as_slice())
+        into_char(self.as_slice())
     }
 }
 
