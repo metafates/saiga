@@ -7,9 +7,11 @@ pub mod param;
 mod table;
 pub mod utf8;
 
+use std::cmp::min;
 use executor::Executor;
 use param::{Params, Subparam};
 use table::{Action, State};
+use crate::ansi::c0;
 
 /// X3.64 doesn’t place any limit on the number of intermediate characters allowed before a final character,
 /// although it doesn’t define any control sequences with more than one.
@@ -135,6 +137,8 @@ pub struct Parser {
     intermediate_handler: Intermediates,
 
     ignoring: bool,
+
+    utf8: utf8::UTF8Collector,
 }
 
 impl Parser {
@@ -142,7 +146,94 @@ impl Parser {
         Self::default()
     }
 
-    pub fn advance<E: Executor>(&mut self, executor: &mut E, byte: u8) {
+    pub fn process<E: Executor>(
+        &mut self,
+        executor: &mut E,
+        bytes: &[u8],
+    ) {
+        let mut i = 0;
+
+        while self.in_escape_sequence() && i < bytes.len() {
+            self.advance(executor, bytes[i]);
+            i += 1;
+        }
+
+        let mut remaining_bytes = &bytes[i..];
+
+        while !remaining_bytes.is_empty() {
+            let Some(next_sequence_start) = c0::first_index_of_c0(remaining_bytes) else {
+                self.process_utf8(executor, remaining_bytes);
+                return;
+            };
+
+            self.process_utf8(executor, &remaining_bytes[..next_sequence_start]);
+
+            if self.utf8.remaining_count > 0 {
+                executor.print(char::REPLACEMENT_CHARACTER);
+                self.utf8.reset();
+            }
+
+            remaining_bytes = &remaining_bytes[next_sequence_start..];
+
+            let mut i = 0;
+
+            loop {
+                self.advance(executor, remaining_bytes[i]);
+                i += 1;
+
+                if !(self.in_escape_sequence() && i < remaining_bytes.len()) {
+                    break;
+                }
+            }
+
+            remaining_bytes = &remaining_bytes[i..];
+        }
+    }
+
+    fn process_utf8<E: Executor>(&mut self, executor: &mut E, bytes: &[u8]) {
+        let mut remaining_bytes = bytes;
+
+        while !remaining_bytes.is_empty() {
+            let want_bytes_count: usize;
+
+            if self.utf8.remaining_count > 0 {
+                want_bytes_count = self.utf8.remaining_count
+            } else if let Some(count) = utf8::expected_bytes_count(remaining_bytes[0]) {
+                // Optimize for ASCII
+                if count == 1 {
+                    executor.print(remaining_bytes[0] as char);
+                    remaining_bytes = &remaining_bytes[1..];
+                    continue;
+                }
+
+                want_bytes_count = count;
+            } else {
+                want_bytes_count = 1;
+            }
+
+            let bytes_count = min(want_bytes_count, remaining_bytes.len());
+
+            for i in 0..bytes_count {
+                self.utf8.push(remaining_bytes[i]);
+            }
+
+            self.utf8.remaining_count = want_bytes_count - bytes_count;
+
+            if self.utf8.remaining_count == 0 {
+                self.consume_utf8(executor);
+            }
+
+            remaining_bytes = &remaining_bytes[bytes_count..];
+        }
+    }
+
+    fn consume_utf8<E: Executor>(&mut self, executor: &mut E) {
+        executor.print(self.utf8.char());
+
+        self.utf8.reset();
+    }
+
+    fn advance<E: Executor>(&mut self, executor: &mut E, byte: u8) {
         let change = table::change_state(State::Anywhere, byte)
             .or_else(|| table::change_state(self.state, byte));
 
@@ -151,7 +242,7 @@ impl Parser {
         self.state_change(executor, state, action, byte);
     }
 
-    pub fn in_escape_sequence(&self) -> bool {
+    fn in_escape_sequence(&self) -> bool {
         self.state != State::Ground
     }
 
@@ -310,32 +401,20 @@ mod tests {
         DcsPut(u8),
         DcsUnhook,
         Execute(u8),
+        Print(char),
     }
 
     impl Executor for Dispatcher {
-        fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
-            let params = params.iter().map(|p| p.to_vec()).collect();
-
-            self.dispatched.push(Sequence::Osc(params, bell_terminated));
+        fn print(&mut self, c: char) {
+            self.dispatched.push(Sequence::Print(c));
         }
 
-        fn csi_dispatch(&mut self, params: &Params, intermediates: &[u8], ignore: bool, c: char) {
-            let params = params
-                .iter()
-                .map(|param| param.to_slice().to_vec())
-                .collect();
-
-            let intermediates = intermediates.to_vec();
-
-            self.dispatched
-                .push(Sequence::Csi(params, intermediates, ignore, c));
+        fn execute(&mut self, byte: u8) {
+            self.dispatched.push(Sequence::Execute(byte))
         }
 
-        fn esc_dispatch(&mut self, intermediates: &[u8], ignore: bool, byte: u8) {
-            let intermediates = intermediates.to_vec();
-
-            self.dispatched
-                .push(Sequence::Esc(intermediates, ignore, byte));
+        fn put(&mut self, byte: u8) {
+            self.dispatched.push(Sequence::DcsPut(byte));
         }
 
         fn hook(&mut self, params: &Params, intermediates: &[u8], ignore: bool, c: char) {
@@ -350,18 +429,33 @@ mod tests {
                 .push(Sequence::DcsHook(params, intermediates, ignore, c));
         }
 
-        fn put(&mut self, byte: u8) {
-            self.dispatched.push(Sequence::DcsPut(byte));
-        }
-
         fn unhook(&mut self) {
             self.dispatched.push(Sequence::DcsUnhook);
         }
 
-        fn print(&mut self, _c: char) {}
+        fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
+            let params = params.iter().map(|p| p.to_vec()).collect();
 
-        fn execute(&mut self, byte: u8) {
-            self.dispatched.push(Sequence::Execute(byte))
+            self.dispatched.push(Sequence::Osc(params, bell_terminated));
+        }
+
+        fn esc_dispatch(&mut self, intermediates: &[u8], ignore: bool, byte: u8) {
+            let intermediates = intermediates.to_vec();
+
+            self.dispatched
+                .push(Sequence::Esc(intermediates, ignore, byte));
+        }
+
+        fn csi_dispatch(&mut self, params: &Params, intermediates: &[u8], ignore: bool, c: char) {
+            let params = params
+                .iter()
+                .map(|param| param.to_slice().to_vec())
+                .collect();
+
+            let intermediates = intermediates.to_vec();
+
+            self.dispatched
+                .push(Sequence::Csi(params, intermediates, ignore, c));
         }
     }
 
@@ -373,9 +467,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            for byte in b"\x07\x08\x00\x85\x84" {
-                parser.advance(&mut dispatcher, *byte);
-            }
+            parser.process(&mut dispatcher, b"\x07\x08\x00");
 
             assert_eq!(
                 dispatcher.dispatched,
@@ -383,8 +475,6 @@ mod tests {
                     Sequence::Execute(0x07),
                     Sequence::Execute(0x08),
                     Sequence::Execute(0x00),
-                    Sequence::Execute(0x85),
-                    Sequence::Execute(0x84),
                 ]
             )
         }
@@ -405,9 +495,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            for byte in OSC_BYTES {
-                parser.advance(&mut dispatcher, *byte);
-            }
+            parser.process(&mut dispatcher, OSC_BYTES);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
@@ -425,9 +513,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            for byte in &[0x1b, 0x5d, 0x07] {
-                parser.advance(&mut dispatcher, *byte);
-            }
+            parser.process(&mut dispatcher, &[0x1b, 0x5d, 0x07]);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
@@ -443,9 +529,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            for byte in input {
-                parser.advance(&mut dispatcher, byte);
-            }
+            parser.process(&mut dispatcher, input.as_slice());
 
             assert_eq!(dispatcher.dispatched.len(), 1);
 
@@ -468,19 +552,13 @@ mod tests {
             let mut parser = Parser::new();
 
             // Create valid OSC escape
-            for byte in INPUT_START {
-                parser.advance(&mut dispatcher, *byte);
-            }
+            parser.process(&mut dispatcher, INPUT_START);
 
             // Exceed max buffer size
-            for _ in 0..NUM_BYTES {
-                parser.advance(&mut dispatcher, b'a');
-            }
+            parser.process(&mut dispatcher, [b'a'].repeat(NUM_BYTES).as_slice());
 
             // Terminate escape for dispatch
-            for byte in INPUT_END {
-                parser.advance(&mut dispatcher, *byte);
-            }
+            parser.process(&mut dispatcher, INPUT_END);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
@@ -499,9 +577,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            for byte in INPUT {
-                parser.advance(&mut dispatcher, *byte);
-            }
+            parser.process(&mut dispatcher, INPUT);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
@@ -525,9 +601,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            for byte in input {
-                parser.advance(&mut dispatcher, byte);
-            }
+            parser.process(&mut dispatcher, &input);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
@@ -550,9 +624,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            for byte in input {
-                parser.advance(&mut dispatcher, byte);
-            }
+            parser.process(&mut dispatcher, &input);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
@@ -569,9 +641,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            for byte in b"\x1b[4;m" {
-                parser.advance(&mut dispatcher, *byte);
-            }
+            parser.process(&mut dispatcher, b"\x1b[4;m" );
 
             assert_eq!(dispatcher.dispatched.len(), 1);
 
@@ -587,9 +657,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            for byte in b"\x1b[;4m" {
-                parser.advance(&mut dispatcher, *byte);
-            }
+            parser.process(&mut dispatcher, b"\x1b[;4m");
 
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
@@ -606,9 +674,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            for byte in INPUT {
-                parser.advance(&mut dispatcher, *byte);
-            }
+            parser.process(&mut dispatcher, INPUT);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
@@ -624,9 +690,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            for byte in INPUT {
-                parser.advance(&mut dispatcher, *byte);
-            }
+            parser.process(&mut dispatcher, INPUT);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
@@ -646,9 +710,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            for byte in INPUT {
-                parser.advance(&mut dispatcher, *byte);
-            }
+            parser.process(&mut dispatcher, INPUT);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
 
@@ -669,9 +731,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            for byte in INPUT {
-                parser.advance(&mut dispatcher, *byte);
-            }
+            parser.process(&mut dispatcher, INPUT);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
 
@@ -717,9 +777,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            for byte in input {
-                parser.advance(&mut dispatcher, byte);
-            }
+            parser.process(&mut dispatcher, &input);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
@@ -738,9 +796,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            for byte in INPUT {
-                parser.advance(&mut dispatcher, *byte);
-            }
+            parser.process(&mut dispatcher, INPUT);
 
             assert_eq!(dispatcher.dispatched.len(), 3);
 
@@ -763,9 +819,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            for byte in INPUT {
-                parser.advance(&mut dispatcher, *byte);
-            }
+            parser.process(&mut dispatcher, INPUT);
 
             assert_eq!(dispatcher.dispatched.len(), 7);
 
@@ -790,9 +844,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            for byte in INPUT {
-                parser.advance(&mut dispatcher, *byte);
-            }
+            parser.process(&mut dispatcher, INPUT);
 
             assert_eq!(dispatcher.dispatched.len(), 6);
             match &dispatcher.dispatched[5] {
@@ -811,9 +863,7 @@ mod tests {
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
 
-            for byte in INPUT {
-                parser.advance(&mut dispatcher, *byte);
-            }
+            parser.process(&mut dispatcher, INPUT);
 
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
@@ -824,6 +874,156 @@ mod tests {
                 }
                 _ => panic!("expected esc sequence"),
             }
+        }
+    }
+
+    mod utf8 {
+        use super::*;
+
+        #[test]
+        fn process_mixed() {
+            let mut parser = Parser::new();
+            let mut dispatcher = Dispatcher::default();
+
+            parser.process(
+                &mut dispatcher,
+                b"hello\x07\x1b[38:2:255:0:255;1m",
+            );
+            parser.process(&mut dispatcher, &[0xD0]);
+            parser.process(&mut dispatcher, &[0x96]);
+            parser.process(&mut dispatcher, &[0xE6, 0xBC, 0xA2]);
+            parser.process(&mut dispatcher, &[0xE6, 0xBC, 0x1B]); // abort utf8 sequence
+
+            assert_eq!(
+                dispatcher.dispatched,
+                vec![
+                    Sequence::Print('h'),
+                    Sequence::Print('e'),
+                    Sequence::Print('l'),
+                    Sequence::Print('l'),
+                    Sequence::Print('o'),
+                    Sequence::Execute(0x07),
+                    Sequence::Csi(
+                        vec![vec![38, 2, 255, 0, 255], vec![1]],
+                        vec![],
+                        false,
+                        'm',
+                    ),
+                    Sequence::Print('Ж'),
+                    Sequence::Print('漢'),
+                    Sequence::Print(char::REPLACEMENT_CHARACTER),
+                ]
+            );
+        }
+    }
+}
+
+#[cfg(test)]
+mod bench {
+    use super::*;
+
+    extern crate test;
+
+    const SAMPLE: &[u8] = b"this is a test for benchmarking processor\x07\x1b[38:2:255:0:255;1m\xD0\x96\xE6\xBC\xA2\xE6\xBC";
+
+    #[derive(Default)]
+    struct NopExecutor {}
+
+    impl Executor for NopExecutor {
+        fn print(&mut self, _c: char) {}
+
+        fn execute(&mut self, _byte: u8) {}
+
+        fn put(&mut self, _byte: u8) {}
+
+        fn hook(
+            &mut self,
+            _params: &crate::param::Params,
+            _intermediates: &[u8],
+            _ignore: bool,
+            _action: char,
+        ) {
+        }
+
+        fn unhook(&mut self) {}
+
+        fn osc_dispatch(&mut self, _params: &[&[u8]], _bell_terminated: bool) {}
+
+        fn esc_dispatch(&mut self, __intermediates: &[u8], _ignore: bool, _byte: u8) {}
+
+        fn csi_dispatch(
+            &mut self,
+            _params: &crate::param::Params,
+            _intermediates: &[u8],
+            _ignore: bool,
+            _action: char,
+        ) {
+        }
+    }
+
+    #[bench]
+    fn process(b: &mut test::Bencher) {
+        b.iter(|| {
+            let mut parser = Parser::new();
+            let mut executor = NopExecutor::default();
+
+            parser.process(&mut executor, SAMPLE);
+        })
+    }
+
+    mod utf8 {
+        use super::*;
+
+        // TODO: make inputs of the same size
+
+        static INPUT_NON_ASCII: &[u8] = r#"
+        Лорем ипсум долор сит амет, пер цлита поссит ех, ат мунере фабулас петентиум сит. Иус цу цибо саперет сцрипсерит, нец виси муциус лабитур ид. Ет хис нонумес нолуиссе дигниссим.
+        側経意責家方家閉討店暖育田庁載社転線宇。得君新術治温抗添代話考振投員殴大闘北裁。品間識部案代学凰処済準世一戸刻法分。悼測済諏計飯利安凶断理資沢同岩面文認革。内警格化再薬方久化体教御決数詭芸得筆代。
+        पढाए हिंदी रहारुप अनुवाद कार्यलय मुख्य संस्था सोफ़तवेर निरपेक्ष उनका आपके बाटते आशाआपस मुख्यतह उशकी करता। शुरुआत संस्था कुशलता मेंभटृ अनुवाद गएआप विशेष सकते परिभाषित लाभान्वित प्रति देकर समजते दिशामे प्राप्त जैसे वर्णन संस्थान निर्माता प्रव्रुति भाति चुनने उपलब्ध बेंगलूर अर्थपुर्ण
+        լոռեմ իպսում դոլոռ սիթ ամեթ, լաբոռե մոդեռաթիուս եթ հաս, պեռ ոմնիս լաթինե դիսպութաթիոնի աթ, վիս ֆեուգաիթ ծիվիբուս եխ. վիվենդում լաբոռամուս ելաբոռառեթ նամ ին.
+        국민경제의 발전을 위한 중요정책의 수립에 관하여 대통령의 자문에 응하기 위하여 국민경제자문회의를 둘 수 있다.
+        Λορεμ ιπσθμ δολορ σιτ αμετ, μει ιδ νοvθμ φαβελλασ πετεντιθμ vελ νε, ατ νισλ σονετ οπορτερε εθμ. Αλιι δοcτθσ μει ιδ, νο αθτεμ αθδιρε ιντερεσσετ μελ, δοcενδι cομμθνε οπορτεατ τε cθμ.
+        旅ロ京青利セムレ弱改フヨス波府かばぼ意送でぼ調掲察たス日西重ケアナ住橋ユムミク順待ふかんぼ人奨貯鏡すびそ。
+        غينيا واستمر العصبة ضرب قد. وباءت الأمريكي الأوربيين هو به،, هو العالم، الثقيلة بال. مع وايرلندا الأوروبيّون كان, قد بحق أسابيع العظمى واعتلاء. انه كل وإقامة المواد.
+        כדי יסוד מונחים מועמדים של, דת דפים מאמרשיחהצפה זאת. אתה דת שונה כלשהו, גם אחר ליום בשפות, או ניווט פולנית לחיבור ארץ. ויש בקלות ואמנות אירועים או, אל אינו כלכלה שתי.
+        "#.as_bytes();
+
+        static INPUT_ASCII: &[u8] = r#"
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
+        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
+        "#.as_bytes();
+
+        #[bench]
+        fn non_ascii(b: &mut test::Bencher) {
+            let mut executor = NopExecutor::default();
+            let mut parser = Parser::new();
+
+            b.iter(|| {
+                parser.process_utf8(
+                    &mut executor,
+                    INPUT_NON_ASCII,
+                );
+            })
+        }
+
+        #[bench]
+        fn ascii(b: &mut test::Bencher) {
+            let mut executor = NopExecutor::default();
+            let mut parser = Parser::new();
+
+            b.iter(|| {
+                parser.process_utf8(
+                    &mut executor,
+                    INPUT_ASCII,
+                );
+            })
         }
     }
 }
