@@ -978,7 +978,7 @@ mod bench {
 
         fn osc_dispatch(&mut self, _params: &[&[u8]], _bell_terminated: bool) {}
 
-        fn esc_dispatch(&mut self, __intermediates: &[u8], _ignore: bool, _byte: u8) {}
+        fn esc_dispatch(&mut self, _intermediates: &[u8], _ignore: bool, _byte: u8) {}
 
         fn csi_dispatch(
             &mut self,
@@ -1008,11 +1008,10 @@ mod bench {
     #[bench]
     fn advance_batch(b: &mut test::Bencher) {
         let input = get_input();
+        let mut parser = Parser::new();
+        let mut executor = NopExecutor::default();
 
         b.iter(|| {
-            let mut parser = Parser::new();
-            let mut executor = NopExecutor::default();
-
             for chunk in input.chunks(16) {
                 parser.advance(&mut executor, chunk);
             }
@@ -1022,11 +1021,10 @@ mod bench {
     #[bench]
     fn advance_sequential(b: &mut test::Bencher) {
         let input = get_input();
+        let mut parser = Parser::new();
+        let mut executor = NopExecutor::default();
 
         b.iter(|| {
-            let mut parser = Parser::new();
-            let mut executor = NopExecutor::default();
-
             for byte in input.iter() {
                 parser.advance(&mut executor, &[*byte]);
             }
