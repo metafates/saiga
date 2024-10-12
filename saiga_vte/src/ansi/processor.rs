@@ -1,11 +1,8 @@
 use log::debug;
 
-use crate::{ansi::handler::Hyperlink, param, utf8, Executor, MAX_INTERMEDIATES};
-
-use super::{
-    c0,
-    handler::{Column, Direction, Handler, Line, LineClearMode, Position, ScreenClearMode},
-};
+use crate::{Executor, MAX_INTERMEDIATES, param, utf8};
+use crate::ansi::handler::{Hyperlink, LineClearMode, ScreenClearMode};
+use super::{c0, handler::{Column, Direction, Handler, Line, Position}};
 
 #[derive(Default)]
 pub struct Processor {
