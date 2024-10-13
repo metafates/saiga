@@ -132,7 +132,7 @@ impl<'a, H: Handler> Executor for HandlerExecutor<'a, H> {
                 let clipboard = clipboard.first().unwrap_or(&b'c');
 
                 match *payload {
-                    b"?" => self.handler.write_clipboard(*clipboard),
+                    b"?" => self.handler.report_clipboard(*clipboard),
                     base64 => self.handler.set_clipboard(*clipboard, base64),
                 }
             }
@@ -162,7 +162,7 @@ impl<'a, H: Handler> Executor for HandlerExecutor<'a, H> {
                 self.handler.linefeed();
                 self.handler.carriage_return();
             }
-            (b'Z', []) => self.handler.write_terminal(),
+            (b'Z', []) => self.handler.report_terminal(),
             (b'7', []) => self.handler.save_cursor_position(),
             (b'8', []) => self.handler.restore_cursor_position(),
 
@@ -184,10 +184,7 @@ impl<'a, H: Handler> Executor for HandlerExecutor<'a, H> {
     ) {
         macro_rules! unhandled {
             () => {{
-                debug!(
-                    "[Unhandled CSI] action={:?}, params={:?}, intermediates={:?}",
-                    action, params, intermediates
-                );
+                debug!("[Unhandled CSI] action={action:?}, params={params:?}, intermediates={intermediates:?}");
             }};
         }
 
@@ -218,7 +215,7 @@ impl<'a, H: Handler> Executor for HandlerExecutor<'a, H> {
                 self.handler
                     .move_cursor(Direction::Right, next_param_or(1).into(), false)
             }
-            ('c', _) => self.handler.write_terminal(), // TODO: pass intermediates?
+            ('c', _) => self.handler.report_terminal(), // TODO: pass intermediates?
             ('D', []) => self
                 .handler
                 .move_cursor(Direction::Left, next_param_or(1).into(), false),
@@ -284,6 +281,12 @@ impl<'a, H: Handler> Executor for HandlerExecutor<'a, H> {
                     self.handler.set_attribute(attribtue);
                 }
             }
+            ('P', []) => self.handler.delete_chars(next_param_or(1).into()),
+            ('p', [b'$']) => self.handler.report_mode(Mode::new(next_param_or(0))),
+            ('u', [b'?']) => self.handler.report_keyboard_mode(),
+            ('u', []) => self.handler.restore_cursor_position(),
+            ('X', []) => self.handler.erase_chars(next_param_or(1).into()),
+
             // TODO: rest
             _ => unhandled!(),
         }

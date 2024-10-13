@@ -477,8 +477,10 @@ pub trait Handler {
     fn put_hyperlink(&mut self, hyperlink: Hyperlink);
     fn put_blank(&mut self, count: usize);
 
-    fn write_clipboard(&mut self, clipboard: u8);
-    fn write_terminal(&mut self);
+    fn report_clipboard(&mut self, clipboard: u8);
+    fn report_terminal(&mut self);
+    fn report_mode(&mut self, mode: Mode);
+    fn report_keyboard_mode(&mut self) {}
 
     fn clear_screen(&mut self, mode: ScreenClearMode);
     fn clear_line(&mut self, mode: LineClearMode);
@@ -487,6 +489,17 @@ pub trait Handler {
     fn restore_cursor_position(&mut self);
 
     fn delete_lines(&mut self, count: usize);
+    /// Delete `count` chars.
+    ///
+    /// Deleting a character is like the delete key on the keyboard - everything
+    /// to the right of the deleted things is shifted left.
+    fn delete_chars(&mut self, count: usize);
+
+    /// Erase `count` chars in current line following cursor.
+    ///
+    /// Erase means resetting to the default state (default colors, no content,
+    /// no mode flags).
+    fn erase_chars(&mut self, count: usize);
 
     fn carriage_return(&mut self);
     fn ring_bell(&mut self);
