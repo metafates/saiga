@@ -1,7 +1,9 @@
+use std::fmt;
+use std::fmt::{Display, Formatter};
 use std::ops::{Add, Mul, Sub};
 use std::str::FromStr;
-use std::fmt::{Display, Formatter};
-use std::fmt;
+
+use crate::param::Params;
 pub type Column = usize;
 pub type Line = i32;
 
@@ -10,44 +12,171 @@ pub struct Position {
     pub column: Column,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum Direction {
-    Up,
-    Right,
-    Down,
-    Left,
+/// Terminal character attributes.
+#[derive(Debug, Eq, PartialEq)]
+pub enum Attribute {
+    /// Clear all special abilities.
+    Reset,
+    /// Bold text.
+    Bold,
+    /// Dim or secondary color.
+    Dim,
+    /// Italic text.
+    Italic,
+    /// Underline text.
+    Underline,
+    /// Underlined twice.
+    DoubleUnderline,
+    /// Undercurled text.
+    Undercurl,
+    /// Dotted underlined text.
+    DottedUnderline,
+    /// Dashed underlined text.
+    DashedUnderline,
+    /// Blink cursor slowly.
+    BlinkSlow,
+    /// Blink cursor fast.
+    BlinkFast,
+    /// Invert colors.
+    Reverse,
+    /// Do not display characters.
+    Hidden,
+    /// Strikeout text.
+    Strike,
+    /// Cancel bold.
+    CancelBold,
+    /// Cancel bold and dim.
+    CancelBoldDim,
+    /// Cancel italic.
+    CancelItalic,
+    /// Cancel all underlines.
+    CancelUnderline,
+    /// Cancel blink.
+    CancelBlink,
+    /// Cancel inversion.
+    CancelReverse,
+    /// Cancel text hiding.
+    CancelHidden,
+    /// Cancel strikeout.
+    CancelStrike,
+    /// Set indexed foreground color.
+    Foreground(Color),
+    /// Set indexed background color.
+    Background(Color),
+    /// Underline color.
+    UnderlineColor(Option<Color>),
 }
 
-pub trait Handler {
-    fn set_title(&mut self, title: &str);
-    fn set_cursor_shape(&mut self, shape: CursorShape);
-    fn set_cursor_position(&mut self, position: Position);
-    fn set_cursor_line(&mut self, line: Line);
-    fn set_cursor_column(&mut self, column: Column);
-    fn set_charset(&mut self, charset: CharsetIndex);
-    fn set_clipboard(&mut self, clipboard: u8, payload: &[u8]);
+/// Wrapper for the ANSI modes.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum Mode {
+    /// Known ANSI mode.
+    Named(NamedMode),
+    /// Unidentified publc mode.
+    Unknown(u16),
+}
 
-    fn move_cursor(&mut self, direction: Direction, count: usize, reset_column: bool);
+impl Mode {
+    pub fn new(mode: u16) -> Self {
+        match mode {
+            4 => Self::Named(NamedMode::Insert),
+            20 => Self::Named(NamedMode::LineFeedNewLine),
+            _ => Self::Unknown(mode),
+        }
+    }
 
-    fn put_char(&mut self, c: char);
-    fn put_tab(&mut self);
-    fn put_hyperlink(&mut self, hyperlink: Hyperlink);
-    fn put_blank(&mut self, count: usize);
+    /// Get the raw value of the mode.
+    pub fn raw(self) -> u16 {
+        match self {
+            Self::Named(named) => named as u16,
+            Self::Unknown(mode) => mode,
+        }
+    }
+}
 
-    fn write_clipboard(&mut self, clipboard: u8);
-    fn write_terminal(&mut self);
+/// ANSI modes.
+#[repr(u16)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum NamedMode {
+    // IRM insert mode
+    Insert = 4,
+    LineFeedNewLine = 20,
+}
 
-    fn clear_screen(&mut self, mode: ScreenClearMode);
-    fn clear_line(&mut self, mode: LineClearMode);
+/// Wrapper for the private DEC modes.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum PrivateMode {
+    /// Known private mode.
+    Named(NamedPrivateMode),
+    /// Unknown private mode.
+    Unknown(u16),
+}
 
-    fn save_cursor_position(&mut self);
-    fn restore_cursor_position(&mut self);
+impl PrivateMode {
+    pub fn new(mode: u16) -> Self {
+        match mode {
+            1 => Self::Named(NamedPrivateMode::CursorKeys),
+            3 => Self::Named(NamedPrivateMode::ColumnMode),
+            6 => Self::Named(NamedPrivateMode::Origin),
+            7 => Self::Named(NamedPrivateMode::LineWrap),
+            12 => Self::Named(NamedPrivateMode::BlinkingCursor),
+            25 => Self::Named(NamedPrivateMode::ShowCursor),
+            1000 => Self::Named(NamedPrivateMode::ReportMouseClicks),
+            1002 => Self::Named(NamedPrivateMode::ReportCellMouseMotion),
+            1003 => Self::Named(NamedPrivateMode::ReportAllMouseMotion),
+            1004 => Self::Named(NamedPrivateMode::ReportFocusInOut),
+            1005 => Self::Named(NamedPrivateMode::Utf8Mouse),
+            1006 => Self::Named(NamedPrivateMode::SgrMouse),
+            1007 => Self::Named(NamedPrivateMode::AlternateScroll),
+            1042 => Self::Named(NamedPrivateMode::UrgencyHints),
+            1049 => Self::Named(NamedPrivateMode::SwapScreenAndSetRestoreCursor),
+            2004 => Self::Named(NamedPrivateMode::BracketedPaste),
+            2026 => Self::Named(NamedPrivateMode::SyncUpdate),
+            _ => Self::Unknown(mode),
+        }
+    }
 
-    fn carriage_return(&mut self);
-    fn ring_bell(&mut self);
-    fn backspace(&mut self);
-    fn linefeed(&mut self);
-    fn substitute(&mut self);
+    /// Get the raw value of the mode.
+    pub fn raw(self) -> u16 {
+        match self {
+            Self::Named(named) => named as u16,
+            Self::Unknown(mode) => mode,
+        }
+    }
+}
+
+/// Private DEC modes.
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum NamedPrivateMode {
+    CursorKeys = 1,
+    /// Select 80 or 132 columns per page (DECCOLM).
+    ///
+    /// CSI ? 3 h -> set 132 column font.
+    /// CSI ? 3 l -> reset 80 column font.
+    ///
+    /// Additionally,
+    ///
+    /// * set margins to default positions
+    /// * erases all data in page memory
+    /// * resets DECLRMM to unavailable
+    /// * clears data from the status line (if set to host-writable)
+    ColumnMode = 3,
+    Origin = 6,
+    LineWrap = 7,
+    BlinkingCursor = 12,
+    ShowCursor = 25,
+    ReportMouseClicks = 1000,
+    ReportCellMouseMotion = 1002,
+    ReportAllMouseMotion = 1003,
+    ReportFocusInOut = 1004,
+    Utf8Mouse = 1005,
+    SgrMouse = 1006,
+    AlternateScroll = 1007,
+    UrgencyHints = 1042,
+    SwapScreenAndSetRestoreCursor = 1049,
+    BracketedPaste = 2004,
+    /// The mode is handled automatically by [`Processor`].
+    SyncUpdate = 2026,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -315,8 +444,54 @@ impl FromStr for Rgb {
                 color >>= 8;
                 let r = color as u8;
                 Ok(Rgb { r, g, b })
-            },
+            }
             Err(_) => Err(()),
         }
     }
 }
+
+#[derive(Debug, Clone, Copy)]
+pub enum Direction {
+    Up,
+    Right,
+    Down,
+    Left,
+}
+
+pub trait Handler {
+    fn set_title(&mut self, title: &str);
+    fn set_cursor_shape(&mut self, shape: CursorShape);
+    fn set_cursor_position(&mut self, position: Position);
+    fn set_cursor_line(&mut self, line: Line);
+    fn set_cursor_column(&mut self, column: Column);
+    fn set_charset(&mut self, charset: CharsetIndex);
+    fn set_clipboard(&mut self, clipboard: u8, payload: &[u8]);
+    fn set_mode(&mut self, mode: Mode);
+    fn set_private_mode(&mut self, mode: PrivateMode);
+    fn set_attribute(&mut self, attribute: Attribute);
+
+    fn move_cursor(&mut self, direction: Direction, count: usize, reset_column: bool);
+
+    fn put_char(&mut self, c: char);
+    fn put_tab(&mut self);
+    fn put_hyperlink(&mut self, hyperlink: Hyperlink);
+    fn put_blank(&mut self, count: usize);
+
+    fn write_clipboard(&mut self, clipboard: u8);
+    fn write_terminal(&mut self);
+
+    fn clear_screen(&mut self, mode: ScreenClearMode);
+    fn clear_line(&mut self, mode: LineClearMode);
+
+    fn save_cursor_position(&mut self);
+    fn restore_cursor_position(&mut self);
+
+    fn delete_lines(&mut self, count: usize);
+
+    fn carriage_return(&mut self);
+    fn ring_bell(&mut self);
+    fn backspace(&mut self);
+    fn linefeed(&mut self);
+    fn substitute(&mut self);
+}
+

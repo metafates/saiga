@@ -1,3 +1,5 @@
+use std::ops::Index;
+
 pub const MAX_PARAMS: usize = 16;
 pub const MAX_SUBPARAMS: usize = MAX_PARAMS * 2;
 pub const PARAM_SEPARATOR: u8 = b';';
@@ -43,55 +45,16 @@ impl Param {
         self.len == MAX_SUBPARAMS
     }
 
-    fn iter(&self) -> ParamIter<'_> {
-        ParamIter::new(self)
-    }
-
-    pub fn to_slice(&self) -> &[Subparam] {
+    pub fn as_slice(&self) -> &[Subparam] {
         &self.array[..self.len]
     }
 }
 
-pub struct ParamIter<'a> {
-    param: &'a Param,
-    index: usize,
-}
+impl Index<usize> for Param {
+    type Output = Subparam;
 
-impl<'a> ParamIter<'a> {
-    fn new(param: &'a Param) -> Self {
-        Self { param, index: 0 }
-    }
-}
-
-impl<'a> Iterator for ParamIter<'a> {
-    type Item = Subparam;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.index >= self.param.len() {
-            return None;
-        }
-
-        let subparam = self.param.array[self.index];
-
-        self.index += 1;
-
-        Some(subparam)
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining = self.param.len() - self.index;
-
-        (remaining, Some(remaining))
-    }
-}
-
-impl<'a> IntoIterator for &'a Param {
-    type Item = Subparam;
-
-    type IntoIter = ParamIter<'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.array[index]
     }
 }
 
@@ -103,7 +66,6 @@ pub struct Params {
 
 impl Params {
     pub fn clear(&mut self) {
-        // TODO: optimize it
         for sub in self.array.iter_mut() {
             sub.clear()
         }
@@ -113,6 +75,14 @@ impl Params {
 
     pub fn len(&self) -> usize {
         self.len
+    }
+
+    pub fn as_slice(&self) -> &[Param] {
+        &self.array[..self.len]
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
     }
 
     pub fn is_full(&self) -> bool {
@@ -129,54 +99,13 @@ impl Params {
 
     pub fn push_subparam(&mut self, subparam: Subparam) {
         self.array[self.len].push(subparam);
-
-        //println!("{:?}", self.array[index])
-    }
-
-    pub fn iter(&self) -> ParamsIter<'_> {
-        ParamsIter::new(self)
     }
 }
 
-impl<'a> IntoIterator for &'a Params {
-    type Item = &'a Param;
+impl Index<usize> for Params {
+    type Output = Param;
 
-    type IntoIter = ParamsIter<'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
-}
-
-pub struct ParamsIter<'a> {
-    params: &'a Params,
-    index: usize,
-}
-
-impl<'a> ParamsIter<'a> {
-    fn new(params: &'a Params) -> Self {
-        Self { params, index: 0 }
-    }
-}
-
-impl<'a> Iterator for ParamsIter<'a> {
-    type Item = &'a Param;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.index >= self.params.len() {
-            return None;
-        }
-
-        let param = &self.params.array[self.index];
-
-        self.index += 1;
-
-        Some(param)
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let remaining = self.params.len() - self.index;
-
-        (remaining, Some(remaining))
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.array[index]
     }
 }
