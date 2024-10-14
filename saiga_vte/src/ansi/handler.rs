@@ -3,9 +3,8 @@ use std::fmt::{Display, Formatter};
 use std::ops::{Add, Mul, Sub};
 use std::str::FromStr;
 
-use crate::param::Params;
 pub type Column = usize;
-pub type Line = i32;
+pub type Line = usize;
 
 pub struct Position {
     pub line: Line,
@@ -501,10 +500,10 @@ pub trait Handler {
     /// no mode flags).
     fn erase_chars(&mut self, count: usize);
 
+    fn newline(&mut self);
     fn carriage_return(&mut self);
     fn ring_bell(&mut self);
     fn backspace(&mut self);
     fn linefeed(&mut self);
     fn substitute(&mut self);
 }
-
