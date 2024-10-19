@@ -1,0 +1,9 @@
+[package]
+name = "saiga_frontend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+saiga_backend = { path = "../saiga_backend" }
+saiga_vte = { path = "../saiga_vte" }
+wgpu = "22.1.0"
