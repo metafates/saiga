@@ -1,3 +1,3 @@
 [workspace]
 resolver = "2"
-members = ["saiga_backend", "saiga_frontend", "saiga_vte"]
+members = ["saiga", "saiga_backend", "saiga_frontend", "saiga_vte"]
