@@ -1,6 +1,7 @@
 #[derive(Clone)]
 pub enum Event {
     SetTitle(String),
+
     PtyWrite(Vec<u8>),
 }
 

@@ -163,6 +163,7 @@ impl<'a, H: Handler> Executor for HandlerExecutor<'a, H> {
                 self.handler.carriage_return();
             }
             (b'Z', []) => self.handler.report_terminal(),
+            (b'c', []) => self.handler.reset_state(),
             (b'7', []) => self.handler.save_cursor_position(),
             (b'8', []) => self.handler.restore_cursor_position(),
 

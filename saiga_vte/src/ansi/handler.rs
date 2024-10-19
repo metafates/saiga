@@ -469,6 +469,8 @@ pub trait Handler {
     fn set_private_mode(&mut self, mode: PrivateMode);
     fn set_attribute(&mut self, attribute: Attribute);
 
+    fn reset_state(&mut self);
+
     fn move_cursor(&mut self, direction: Direction, count: usize, reset_column: bool);
 
     fn put_char(&mut self, c: char);

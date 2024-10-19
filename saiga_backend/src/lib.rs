@@ -1,7 +1,7 @@
 use std::mem;
 
 use event::{Event, EventListener};
-use grid::{cell::Cell, Dimensions, Grid};
+use grid::{cell::UnderlineType, Dimensions, Grid};
 use saiga_vte::ansi::handler::{Attribute, Handler, NamedMode, NamedPrivateMode, PrivateMode};
 use unicode_width::UnicodeWidthChar;
 
@@ -32,6 +32,11 @@ impl<E: EventListener> Terminal<E> {
             mode: TerminalMode::default(),
             event_listener,
         }
+    }
+
+    pub fn resize(&mut self, dimensions: Dimensions) {
+        self.grid.resize(dimensions);
+        self.secondary_grid.resize(dimensions);
     }
 
     fn swap_grids(&mut self) {
@@ -121,32 +126,48 @@ impl<E: EventListener> Handler for Terminal<E> {
         let template = &mut self.grid.cursor.template;
 
         match attribute {
-            Attribute::Reset => template.apply_template(&Cell::default()), // TODO: optimize
+            Attribute::Reset => template.reset_template(),
             Attribute::Bold => template.bold = true,
-            Attribute::Dim => todo!(),
+            Attribute::Dim => template.dim = true,
             Attribute::Italic => template.italic = true,
-            Attribute::Underline => todo!(),
-            Attribute::DoubleUnderline => todo!(),
-            Attribute::Undercurl => todo!(),
-            Attribute::DottedUnderline => todo!(),
-            Attribute::DashedUnderline => todo!(),
+            Attribute::Underline => template.underline_type = Some(UnderlineType::Regular),
+            Attribute::DoubleUnderline => template.underline_type = Some(UnderlineType::Double),
+            Attribute::Undercurl => template.underline_type = Some(UnderlineType::Curl),
+            Attribute::DottedUnderline => template.underline_type = Some(UnderlineType::Dotted),
+            Attribute::DashedUnderline => template.underline_type = Some(UnderlineType::Dashed),
             Attribute::BlinkSlow => todo!(),
             Attribute::BlinkFast => todo!(),
-            Attribute::Reverse => todo!(),
+            Attribute::Reverse => template.reverse = true,
             Attribute::Hidden => todo!(),
             Attribute::Strike => todo!(),
             Attribute::CancelBold => template.bold = false,
-            Attribute::CancelBoldDim => todo!(),
+            Attribute::CancelBoldDim => {
+                template.bold = false;
+                template.dim = false;
+            }
             Attribute::CancelItalic => template.italic = false,
-            Attribute::CancelUnderline => todo!(),
+            Attribute::CancelUnderline => template.underline_type = None,
             Attribute::CancelBlink => todo!(),
-            Attribute::CancelReverse => todo!(),
+            Attribute::CancelReverse => template.reverse = false,
             Attribute::CancelHidden => todo!(),
             Attribute::CancelStrike => todo!(),
             Attribute::Foreground(color) => template.foreground = color,
             Attribute::Background(color) => template.background = color,
-            Attribute::UnderlineColor(color) => todo!(),
+            Attribute::UnderlineColor(color) => {
+                // TODO: do we need to reset the color if it's None?
+                if let Some(color) = color {
+                    template.underline_color = color
+                }
+            }
         }
+    }
+
+    fn reset_state(&mut self) {
+        if self.mode.alterantive_screen {
+            self.swap_grids();
+        }
+
+        self.mode = TerminalMode::default();
     }
 
     fn move_cursor(
@@ -211,7 +232,7 @@ impl<E: EventListener> Handler for Terminal<E> {
         if self.grid.cursor.position.column + 1 < grid_columns {
             self.grid.cursor.position.column += 1;
         } else {
-            // wrap
+            todo!("wrap")
         }
     }
 
@@ -271,6 +292,14 @@ impl<E: EventListener> Handler for Terminal<E> {
         todo!()
     }
 
+    fn newline(&mut self) {
+        self.linefeed();
+
+        if self.mode.line_feed_new_line {
+            self.carriage_return();
+        }
+    }
+
     fn carriage_return(&mut self) {
         self.grid.cursor.position.column = 0;
     }
@@ -298,13 +327,5 @@ impl<E: EventListener> Handler for Terminal<E> {
 
     fn substitute(&mut self) {
         todo!()
-    }
-
-    fn newline(&mut self) {
-        self.linefeed();
-
-        if self.mode.line_feed_new_line {
-            self.carriage_return();
-        }
     }
 }

@@ -464,7 +464,8 @@ mod tests {
 
         fn hook(&mut self, params: &Params, intermediates: &[u8], ignore: bool, c: char) {
             let params = params
-                .iter()
+                .as_slice()
+                .into_iter()
                 .map(|param| param.as_slice().to_vec())
                 .collect();
 
@@ -493,7 +494,8 @@ mod tests {
 
         fn csi_dispatch(&mut self, params: &Params, intermediates: &[u8], ignore: bool, c: char) {
             let params = params
-                .iter()
+                .as_slice()
+                .into_iter()
                 .map(|param| param.as_slice().to_vec())
                 .collect();
 

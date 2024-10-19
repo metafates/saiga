@@ -1,4 +1,4 @@
-use std::ops::{Index, IndexMut};
+use std::ops::{Deref, DerefMut, Index, IndexMut};
 
 use cell::Cell;
 
@@ -10,6 +10,20 @@ pub type Column = usize;
 #[derive(Clone)]
 pub struct Row(Vec<Cell>);
 
+impl Deref for Row {
+    type Target = Vec<Cell>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for Row {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
 impl Row {
     pub fn new(columns: usize) -> Self {
         let mut inner = Vec::with_capacity(columns);
@@ -17,14 +31,6 @@ impl Row {
         inner.resize(columns, Cell::default());
 
         Self(inner)
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn swap(&mut self, a: usize, b: usize) {
-        self.0.swap(a, b);
     }
 }
 
@@ -63,10 +69,10 @@ pub struct Cursor {
 #[derive(Default)]
 pub struct Grid {
     rows: Vec<Row>,
-    columns_count: usize,
 
     pub cursor: Cursor,
     pub saved_cursor: Option<Cursor>,
+
     dimensions: Dimensions,
 }
 
@@ -78,19 +84,22 @@ impl Grid {
 
         Self {
             rows,
-            columns_count: dimensions.columns,
             cursor: Cursor::default(),
             saved_cursor: None,
             dimensions,
         }
     }
 
+    pub fn resize(&mut self, _dimensions: Dimensions) {
+        todo!("resize")
+    }
+
     pub fn width(&self) -> usize {
-        self.columns_count
+        self.dimensions.columns
     }
 
     pub fn height(&self) -> usize {
-        self.rows.len()
+        self.dimensions.rows
     }
 
     pub fn iter(&self) -> GridIterator<'_> {
@@ -180,5 +189,30 @@ impl<'a> Iterator for GridIterator<'a> {
         self.current = Some(position);
 
         Some(cell)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn initialize() {
+        let dimensions = Dimensions {
+            rows: 42,
+            columns: 37,
+        };
+
+        let grid = Grid::with_dimensions(dimensions);
+
+        assert_eq!(grid.rows.len(), dimensions.rows);
+
+        for row in grid.rows {
+            assert_eq!(row.len(), dimensions.columns);
+
+            for cell in row.iter() {
+                assert_eq!(cell, &Cell::default());
+            }
+        }
     }
 }
