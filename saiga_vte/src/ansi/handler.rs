@@ -6,6 +6,7 @@ use std::str::FromStr;
 pub type Column = usize;
 pub type Line = usize;
 
+#[derive(Debug, Eq, PartialEq)]
 pub struct Position {
     pub line: Line,
     pub column: Column,
@@ -216,6 +217,74 @@ pub enum CharsetIndex {
     G3,
 }
 
+impl TryFrom<u8> for CharsetIndex {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        return match value {
+            b'(' => Ok(CharsetIndex::G0),
+            b')' => Ok(CharsetIndex::G1),
+            b'*' => Ok(CharsetIndex::G2),
+            b'+' => Ok(CharsetIndex::G3),
+            _ => Err(()),
+        };
+    }
+}
+
+/// Standard or common character sets which can be designated as G0-G3.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum Charset {
+    #[default]
+    Ascii,
+    SpecialCharacterAndLineDrawing,
+}
+
+impl Charset {
+    /// Switch/Map character to the active charset. Ascii is the common case and
+    /// for that we want to do as little as possible.
+    #[inline]
+    pub fn map(self, c: char) -> char {
+        match self {
+            Charset::Ascii => c,
+            Charset::SpecialCharacterAndLineDrawing => match c {
+                '_' => ' ',
+                '`' => '◆',
+                'a' => '▒',
+                'b' => '\u{2409}', // Symbol for horizontal tabulation
+                'c' => '\u{240c}', // Symbol for form feed
+                'd' => '\u{240d}', // Symbol for carriage return
+                'e' => '\u{240a}', // Symbol for line feed
+                'f' => '°',
+                'g' => '±',
+                'h' => '\u{2424}', // Symbol for newline
+                'i' => '\u{240b}', // Symbol for vertical tabulation
+                'j' => '┘',
+                'k' => '┐',
+                'l' => '┌',
+                'm' => '└',
+                'n' => '┼',
+                'o' => '⎺',
+                'p' => '⎻',
+                'q' => '─',
+                'r' => '⎼',
+                's' => '⎽',
+                't' => '├',
+                'u' => '┤',
+                'v' => '┴',
+                'w' => '┬',
+                'x' => '│',
+                'y' => '≤',
+                'z' => '≥',
+                '{' => 'π',
+                '|' => '≠',
+                '}' => '£',
+                '~' => '·',
+                _ => c,
+            },
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct Hyperlink {
     /// Identifier for the given hyperlink.
@@ -227,7 +296,7 @@ pub struct Hyperlink {
 /// Mode for clearing terminal.
 ///
 /// Relative to cursor.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ScreenClearMode {
     /// Clear below cursor.
     Below,
@@ -242,7 +311,7 @@ pub enum ScreenClearMode {
 /// Mode for clearing line.
 ///
 /// Relative to cursor.
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum LineClearMode {
     /// Clear right of cursor.
     Right,
@@ -449,7 +518,7 @@ impl FromStr for Rgb {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Direction {
     Up,
     Right,
@@ -463,7 +532,8 @@ pub trait Handler {
     fn set_cursor_position(&mut self, position: Position);
     fn set_cursor_line(&mut self, line: Line);
     fn set_cursor_column(&mut self, column: Column);
-    fn set_charset(&mut self, charset: CharsetIndex);
+    fn set_charset_index(&mut self, index: CharsetIndex, charset: Charset);
+    fn set_active_charset(&mut self, index: CharsetIndex);
     fn set_clipboard(&mut self, clipboard: u8, payload: &[u8]);
     fn set_mode(&mut self, mode: Mode);
     fn set_private_mode(&mut self, mode: PrivateMode);

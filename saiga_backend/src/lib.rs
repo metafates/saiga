@@ -160,7 +160,7 @@ impl<E: EventListener> Handler for Terminal<E> {
         todo!()
     }
 
-    fn set_charset(&mut self, charset: saiga_vte::ansi::handler::CharsetIndex) {
+    fn set_active_charset(&mut self, charset: saiga_vte::ansi::handler::CharsetIndex) {
         todo!()
     }
 
@@ -245,6 +245,14 @@ impl<E: EventListener> Handler for Terminal<E> {
     }
 
     fn substitute(&mut self) {
+        todo!()
+    }
+
+    fn set_charset_index(
+        &mut self,
+        index: saiga_vte::ansi::handler::CharsetIndex,
+        charset: saiga_vte::ansi::handler::Charset,
+    ) {
         todo!()
     }
 }
