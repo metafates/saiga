@@ -50,15 +50,16 @@ impl Default for Dimensions {
     }
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 pub struct Position {
     pub line: Line,
     pub column: Column,
 }
 
+#[derive(Debug)]
 pub struct PositionedCell {
     pub position: Position,
-    pub cell: Cell,
+    pub value: Cell,
 }
 
 #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
@@ -123,8 +124,8 @@ impl Grid {
 
     pub fn iter(&self) -> GridIterator<'_> {
         let end = Position {
-            line: self.height(),
-            column: self.width(),
+            line: self.height() - 1,
+            column: self.width() - 1,
         };
 
         GridIterator {
@@ -201,7 +202,7 @@ impl<'a> Iterator for GridIterator<'a> {
             .unwrap_or_default();
 
         let cell = PositionedCell {
-            cell: self.grid[position],
+            value: self.grid[position],
             position,
         };
 

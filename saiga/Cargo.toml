@@ -7,3 +7,5 @@ edition = "2021"
 saiga_frontend = { path = "../saiga_frontend" }
 saiga_backend = { path = "../saiga_backend" }
 saiga_vte = { path = "../saiga_vte" }
+log = "0.4.22"
+env_logger = "0.11.5"

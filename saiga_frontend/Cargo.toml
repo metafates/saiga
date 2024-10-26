@@ -8,3 +8,4 @@ saiga_backend = { path = "../saiga_backend" }
 saiga_vte = { path = "../saiga_vte" }
 wgpu = "22.1.0"
 winit = "0.30.5"
+log = "0.4.22"

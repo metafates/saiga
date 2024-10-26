@@ -7,6 +7,7 @@ use unicode_width::UnicodeWidthChar;
 
 pub mod event;
 pub mod grid;
+pub mod pty;
 
 #[derive(Default)]
 pub struct TerminalMode {
@@ -36,14 +37,18 @@ impl<E: EventListener> Terminal<E> {
         }
     }
 
+    pub fn grid(&self) -> &Grid {
+        &self.grid
+    }
+
     pub fn resize(&mut self, dimensions: Dimensions) {
         self.grid.resize(dimensions);
         self.secondary_grid.resize(dimensions);
     }
 
-    fn swap_grids(&mut self) {
-        mem::swap(&mut self.grid, &mut self.secondary_grid);
-    }
+    //fn swap_grids(&mut self) {
+    //    mem::swap(&mut self.grid, &mut self.secondary_grid);
+    //}
 
     fn write_at_cursor(&mut self, c: char) {
         let c = self.grid.cursor.charsets[self.active_charset].map(c);
@@ -118,7 +123,7 @@ impl<E: EventListener> Handler for Terminal<E> {
         if self.grid.cursor.position.column + 1 < grid_columns {
             self.grid.cursor.position.column += 1;
         } else {
-            todo!("wrap")
+            //todo!("wrap")
         }
     }
 
@@ -137,10 +142,12 @@ impl<E: EventListener> Handler for Terminal<E> {
     fn linefeed(&mut self) {
         let next_line = self.grid.cursor.position.line + 1;
 
-        // TODO
-        if next_line >= self.grid.height() {
+        if next_line < self.grid.height() {
             self.grid.cursor.position.line = next_line;
+            return;
         }
+
+        todo!()
     }
 
     fn set_title(&mut self, title: &str) {
@@ -176,7 +183,7 @@ impl<E: EventListener> Handler for Terminal<E> {
     }
 
     fn set_private_mode(&mut self, mode: PrivateMode) {
-        todo!()
+        //todo!("set private mode: {mode:?}")
     }
 
     fn set_attribute(&mut self, attribute: Attribute) {
