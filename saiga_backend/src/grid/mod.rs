@@ -1,6 +1,7 @@
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 
 use cell::Cell;
+use saiga_vte::ansi::handler::{Charset, CharsetIndex};
 
 pub mod cell;
 
@@ -60,10 +61,28 @@ pub struct PositionedCell {
     pub cell: Cell,
 }
 
+#[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+pub struct Charsets([Charset; 4]);
+
+impl Index<CharsetIndex> for Charsets {
+    type Output = Charset;
+
+    fn index(&self, index: CharsetIndex) -> &Self::Output {
+        &self.0[index as usize]
+    }
+}
+
+impl IndexMut<CharsetIndex> for Charsets {
+    fn index_mut(&mut self, index: CharsetIndex) -> &mut Self::Output {
+        &mut self.0[index as usize]
+    }
+}
+
 #[derive(Default, Clone)]
 pub struct Cursor {
     pub position: Position,
     pub template: Cell,
+    pub charsets: Charsets,
 }
 
 #[derive(Default)]

@@ -1,8 +1,8 @@
-use std::mem;
+use std::{collections::HashMap, mem};
 
 use event::EventListener;
 use grid::{Dimensions, Grid};
-use saiga_vte::ansi::handler::{Attribute, Handler, PrivateMode};
+use saiga_vte::ansi::handler::{Attribute, Charset, CharsetIndex, Handler, PrivateMode};
 use unicode_width::UnicodeWidthChar;
 
 pub mod event;
@@ -20,6 +20,7 @@ pub struct Terminal<E: EventListener> {
     secondary_grid: Grid,
 
     mode: TerminalMode,
+    active_charset: CharsetIndex,
 
     event_listener: E,
 }
@@ -30,6 +31,7 @@ impl<E: EventListener> Terminal<E> {
             grid: Grid::with_dimensions(dimensions),
             secondary_grid: Grid::with_dimensions(dimensions),
             mode: TerminalMode::default(),
+            active_charset: CharsetIndex::default(),
             event_listener,
         }
     }
@@ -44,6 +46,7 @@ impl<E: EventListener> Terminal<E> {
     }
 
     fn write_at_cursor(&mut self, c: char) {
+        let c = self.grid.cursor.charsets[self.active_charset].map(c);
         let template = self.grid.cursor.template;
         let cell_at_cursor = self.grid.cell_at_cursor_mut();
 
@@ -161,7 +164,7 @@ impl<E: EventListener> Handler for Terminal<E> {
     }
 
     fn set_active_charset(&mut self, charset: saiga_vte::ansi::handler::CharsetIndex) {
-        todo!()
+        self.active_charset = charset;
     }
 
     fn set_clipboard(&mut self, clipboard: u8, payload: &[u8]) {
@@ -253,6 +256,8 @@ impl<E: EventListener> Handler for Terminal<E> {
         index: saiga_vte::ansi::handler::CharsetIndex,
         charset: saiga_vte::ansi::handler::Charset,
     ) {
-        todo!()
+        self.grid.cursor.charsets[index] = charset;
     }
+
+    fn report_keyboard_mode(&mut self) {}
 }

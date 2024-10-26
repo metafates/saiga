@@ -207,7 +207,7 @@ pub enum CursorShape {
 }
 
 /// Identifiers which can be assigned to a graphic character set.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash)]
 pub enum CharsetIndex {
     /// Default set, is designated as ASCII at startup.
     #[default]
