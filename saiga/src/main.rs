@@ -1,3 +1,3 @@
 fn main() {
-    println!("Hello, world!");
+    saiga_frontend::run().unwrap();
 }
