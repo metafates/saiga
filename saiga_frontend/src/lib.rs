@@ -28,17 +28,17 @@ enum Event {
     Terminal(TerminalEvent),
 }
 
-struct EventListener {
+struct TerminalEventListener {
     event_loop_proxy: EventLoopProxy<Event>,
 }
 
-impl EventListener {
+impl TerminalEventListener {
     fn new(event_loop_proxy: EventLoopProxy<Event>) -> Self {
         Self { event_loop_proxy }
     }
 }
 
-impl saiga_backend::event::EventListener for EventListener {
+impl saiga_backend::event::EventListener for TerminalEventListener {
     fn on_event(&self, event: TerminalEvent) {
         self.event_loop_proxy
             .send_event(Event::Terminal(event))
@@ -50,12 +50,15 @@ struct Application {
     processor: Processor,
     pty: Pty,
     window: Option<Window>,
-    terminal: Terminal<EventListener>,
+    terminal: Terminal<TerminalEventListener>,
 }
 
 impl Application {
     pub fn new(event_loop_proxy: EventLoopProxy<Event>, pty: Pty) -> Self {
-        let terminal = Terminal::new(Dimensions::default(), EventListener::new(event_loop_proxy));
+        let terminal = Terminal::new(
+            Dimensions::default(),
+            TerminalEventListener::new(event_loop_proxy),
+        );
 
         Self {
             processor: Processor::new(),
@@ -75,7 +78,7 @@ impl ApplicationHandler<Event> for Application {
         self.window = Some(window);
     }
 
-    fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: Event) {
+    fn user_event(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop, event: Event) {
         match event {
             Event::Terminal(event) => match event {
                 TerminalEvent::SetTitle(title) => {
@@ -100,25 +103,30 @@ impl ApplicationHandler<Event> for Application {
     ) {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::Resized(size) => {
+                debug!("resized: {size:?}");
+            }
             WindowEvent::RedrawRequested => {
                 let mut read_buffer = [0; 65536];
 
                 let res = self.pty.read(&mut read_buffer);
 
                 match res {
+                    Ok(0) => return,
                     Ok(size) => {
                         self.processor
                             .advance(&mut self.terminal, &read_buffer[..size]);
+
+                        for c in self.terminal.grid().iter() {
+                            if c.value.char.is_some() {
+                                //debug!("cell: {c:?}")
+                            }
+                        }
                     }
                     Err(e) => {
                         debug!("error reading: {e:?}");
-                        return;
                     }
                 };
-
-                for c in self.terminal.grid().iter() {
-                    debug!("cell: {c:?}")
-                }
             }
             _ => (),
         }
