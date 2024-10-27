@@ -1,8 +1,13 @@
+mod display;
+
+use pollster::FutureExt as _;
+
 use std::{
     error::Error,
     io::{Read, Write},
 };
 
+use display::Display;
 use log::debug;
 use saiga_backend::{event::Event as TerminalEvent, grid::Dimensions, pty::Pty, Terminal};
 use saiga_vte::ansi::processor::Processor;
@@ -46,14 +51,16 @@ impl saiga_backend::event::EventListener for TerminalEventListener {
     }
 }
 
-struct Application {
+struct Application<'a> {
     processor: Processor,
+
+    // TODO: move into separate struct so that multiple windows could be supported
     pty: Pty,
-    window: Option<Window>,
+    display: Option<Display<'a>>,
     terminal: Terminal<TerminalEventListener>,
 }
 
-impl Application {
+impl Application<'_> {
     pub fn new(event_loop_proxy: EventLoopProxy<Event>, pty: Pty) -> Self {
         let terminal = Terminal::new(
             Dimensions::default(),
@@ -62,31 +69,54 @@ impl Application {
 
         Self {
             processor: Processor::new(),
-            window: None,
+            display: None,
             terminal,
             pty,
         }
     }
+
+    fn redraw(&mut self) {
+        let mut read_buffer = [0; 65536];
+
+        let res = self.pty.read(&mut read_buffer);
+
+        match res {
+            Ok(0) => return,
+            Ok(size) => {
+                self.processor
+                    .advance(&mut self.terminal, &read_buffer[..size]);
+
+                if let Some(display) = &mut self.display {
+                    display.draw(&mut self.terminal);
+                }
+            }
+            Err(e) => {
+                debug!("error reading: {e:?}");
+            }
+        };
+    }
 }
 
-impl ApplicationHandler<Event> for Application {
+impl ApplicationHandler<Event> for Application<'_> {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         let window = event_loop
             .create_window(Window::default_attributes())
             .unwrap();
 
-        self.window = Some(window);
+        let display = Display::new(window).block_on();
+
+        self.display = Some(display);
     }
 
     fn user_event(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop, event: Event) {
         match event {
             Event::Terminal(event) => match event {
                 TerminalEvent::SetTitle(title) => {
-                    let Some(window) = &self.window else {
+                    let Some(display) = &self.display else {
                         return;
                     };
 
-                    window.set_title(&title);
+                    display.window().set_title(&title);
                 }
                 TerminalEvent::PtyWrite(payload) => {
                     self.pty.write(&payload).unwrap();
@@ -104,29 +134,15 @@ impl ApplicationHandler<Event> for Application {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => {
-                debug!("resized: {size:?}");
+                let Some(display) = &mut self.display else {
+                    return;
+                };
+
+                display.resize(size);
+                display.window().request_redraw();
             }
             WindowEvent::RedrawRequested => {
-                let mut read_buffer = [0; 65536];
-
-                let res = self.pty.read(&mut read_buffer);
-
-                match res {
-                    Ok(0) => return,
-                    Ok(size) => {
-                        self.processor
-                            .advance(&mut self.terminal, &read_buffer[..size]);
-
-                        for c in self.terminal.grid().iter() {
-                            if c.value.char.is_some() {
-                                //debug!("cell: {c:?}")
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        debug!("error reading: {e:?}");
-                    }
-                };
+                self.redraw();
             }
             _ => (),
         }
