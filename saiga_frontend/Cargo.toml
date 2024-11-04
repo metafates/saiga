@@ -10,3 +10,5 @@ wgpu = "22.1.0"
 winit = "0.30.5"
 log = "0.4.22"
 pollster = "0.3.0"
+bytemuck = { version = "1.19.0", features = ["derive"] }
+rand = "0.8"

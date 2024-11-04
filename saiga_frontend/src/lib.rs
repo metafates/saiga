@@ -5,6 +5,7 @@ use pollster::FutureExt as _;
 use std::{
     error::Error,
     io::{Read, Write},
+    sync::Arc,
 };
 
 use display::Display;
@@ -76,24 +77,28 @@ impl Application<'_> {
     }
 
     fn redraw(&mut self) {
-        let mut read_buffer = [0; 65536];
+        if let Some(display) = &mut self.display {
+            display.draw(&mut self.terminal);
+        }
 
-        let res = self.pty.read(&mut read_buffer);
-
-        match res {
-            Ok(0) => return,
-            Ok(size) => {
-                self.processor
-                    .advance(&mut self.terminal, &read_buffer[..size]);
-
-                if let Some(display) = &mut self.display {
-                    display.draw(&mut self.terminal);
-                }
-            }
-            Err(e) => {
-                debug!("error reading: {e:?}");
-            }
-        };
+        //let mut read_buffer = [0; 65536];
+        //
+        //let res = self.pty.read(&mut read_buffer);
+        //
+        //match res {
+        //    Ok(0) => return,
+        //    Ok(size) => {
+        //        self.processor
+        //            .advance(&mut self.terminal, &read_buffer[..size]);
+        //
+        //        if let Some(display) = &mut self.display {
+        //            display.draw(&mut self.terminal);
+        //        }
+        //    }
+        //    Err(e) => {
+        //        debug!("error reading: {e:?}");
+        //    }
+        //};
     }
 }
 
@@ -102,6 +107,8 @@ impl ApplicationHandler<Event> for Application<'_> {
         let window = event_loop
             .create_window(Window::default_attributes())
             .unwrap();
+
+        let window = Arc::new(window);
 
         let display = Display::new(window).block_on();
 
@@ -116,7 +123,7 @@ impl ApplicationHandler<Event> for Application<'_> {
                         return;
                     };
 
-                    display.window().set_title(&title);
+                    display.window.set_title(&title);
                 }
                 TerminalEvent::PtyWrite(payload) => {
                     self.pty.write(&payload).unwrap();
@@ -133,13 +140,21 @@ impl ApplicationHandler<Event> for Application<'_> {
     ) {
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                let Some(display) = &mut self.display else {
+                    return;
+                };
+
+                display.set_scale_factor(scale_factor);
+                display.window.request_redraw();
+            }
             WindowEvent::Resized(size) => {
                 let Some(display) = &mut self.display else {
                     return;
                 };
 
-                display.resize(size);
-                display.window().request_redraw();
+                display.set_size(size.width, size.height);
+                display.window.request_redraw();
             }
             WindowEvent::RedrawRequested => {
                 self.redraw();
