@@ -41,21 +41,7 @@ impl Context<'_> {
 
         let alpha_mode = wgpu::CompositeAlphaMode::default();
 
-        surface.configure(
-            &device,
-            &wgpu::SurfaceConfiguration {
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-                format,
-                width: size.width,
-                height: size.height,
-                view_formats: vec![],
-                alpha_mode,
-                present_mode: wgpu::PresentMode::Fifo,
-                desired_maximum_frame_latency: 2,
-            },
-        );
-
-        Context {
+        let mut ctx = Context {
             device,
             surface,
             queue,
@@ -64,7 +50,11 @@ impl Context<'_> {
             width: size.width,
             height: size.height,
             scale_factor: window.scale_factor(),
-        }
+        };
+
+        ctx.set_size(size.width, size.height);
+
+        ctx
     }
 
     pub fn set_size(&mut self, width: u32, height: u32) {

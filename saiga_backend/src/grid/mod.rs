@@ -35,7 +35,7 @@ impl Row {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct Dimensions {
     pub rows: usize,
     pub columns: usize,
@@ -110,8 +110,15 @@ impl Grid {
         }
     }
 
-    pub fn resize(&mut self, _dimensions: Dimensions) {
-        todo!("resize")
+    pub fn resize(&mut self, dimensions: Dimensions) {
+        // TODO: rewrite this. just a placeholder
+        self.dimensions = dimensions;
+
+        let mut rows = Vec::with_capacity(dimensions.rows);
+
+        rows.resize(dimensions.rows, Row::new(dimensions.columns));
+
+        self.rows = rows;
     }
 
     pub fn width(&self) -> usize {
@@ -190,13 +197,13 @@ impl<'a> Iterator for GridIterator<'a> {
         let position = self
             .current
             .map(|p| match p {
-                Position { column, .. } if column == self.grid.width() - 1 => Position {
-                    line: p.line + 1,
+                Position { column, line } if column == self.grid.width() - 1 => Position {
+                    line: line + 1,
                     column: 0,
                 },
-                _ => Position {
-                    line: p.line,
-                    column: p.column + 1,
+                Position { column, line } => Position {
+                    line,
+                    column: column + 1,
                 },
             })
             .unwrap_or_default();

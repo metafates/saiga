@@ -153,6 +153,11 @@ impl ApplicationHandler<Event> for Application<'_> {
                     return;
                 };
 
+                // TODO: compute this properly
+                self.terminal.resize(Dimensions {
+                    rows: size.height as usize / 60,
+                    columns: size.width as usize / 30,
+                });
                 display.set_size(size.width, size.height);
                 display.window.request_redraw();
             }

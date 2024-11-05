@@ -255,20 +255,6 @@ impl Brush {
         rpass: &mut wgpu::RenderPass,
         rects: Vec<Rect>,
     ) {
-        // TODO: move it to arguments. just a test for now
-        //let rects = vec![
-        //    Rect {
-        //        position: [0.0, 0.0],
-        //        color: [0.0, 0.0, 0.0, 1.0],
-        //        size: [20.0, 20.0],
-        //    },
-        //    Rect {
-        //        position: [10.0, 0.0],
-        //        color: [0.0, 0.0, 0.0, 1.0],
-        //        size: [20.0, 20.0],
-        //    },
-        //];
-
         if rects.is_empty() {
             return;
         }
