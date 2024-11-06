@@ -15,7 +15,8 @@ pub struct Display<'a> {
 }
 
 impl Display<'_> {
-    pub async fn new(window: Arc<Window>) -> Self {
+    pub async fn new(window: Window) -> Self {
+        let window = Arc::new(window);
         let context = context::Context::new(window.clone()).await;
         let brushes = brush::Brushes::new(&context);
 
