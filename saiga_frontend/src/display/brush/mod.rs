@@ -1,5 +1,4 @@
-use rand::Rng;
-use saiga_backend::grid::PositionedCell;
+use saiga_backend::{event::EventListener, grid::PositionedCell, Terminal};
 
 use super::context;
 
@@ -22,36 +21,38 @@ impl Brushes {
         self.rect.resize(ctx);
     }
 
-    pub fn draw(
+    pub fn draw<E: EventListener>(
         &mut self,
         ctx: &mut context::Context,
         rpass: &mut wgpu::RenderPass,
-        cells: Vec<PositionedCell>,
+        terminal: &mut Terminal<E>,
     ) {
-        {
-            const SIZE: f32 = 30.0;
+        // TODO: make this value non-hardcoded
+        const SIZE: f32 = 30.0;
 
-            // TODO: remove later
-            let mut rng = rand::thread_rng();
+        let rects = terminal
+            .grid()
+            .iter()
+            .map(|c| {
+                // TODO: use background
+                let color = terminal.get_color(c.value.foreground);
 
-            let rects = cells
-                .iter()
-                .map(|c| rect::Rect {
+                rect::Rect {
                     position: [
                         c.position.column as f32 * (SIZE / 2.0),
                         c.position.line as f32 * SIZE,
                     ],
                     color: [
-                        rng.gen_range(0..100) as f32 / 100.0,
-                        rng.gen_range(0..100) as f32 / 100.0,
-                        rng.gen_range(0..100) as f32 / 100.0,
+                        color.r as f32 / u8::MAX as f32,
+                        color.g as f32 / u8::MAX as f32,
+                        color.b as f32 / u8::MAX as f32,
                         1.0,
                     ],
                     size: [SIZE, SIZE],
-                })
-                .collect();
+                }
+            })
+            .collect();
 
-            self.rect.draw(ctx, rpass, rects);
-        }
+        self.rect.draw(ctx, rpass, rects);
     }
 }

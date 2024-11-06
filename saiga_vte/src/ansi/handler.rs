@@ -446,6 +446,12 @@ pub struct Rgb {
     pub b: u8,
 }
 
+impl Rgb {
+    pub fn new(r: u8, g: u8, b: u8) -> Self {
+        Self { r, g, b }
+    }
+}
+
 // A multiply function for Rgb, as the default dim is just *2/3.
 impl Mul<f32> for Rgb {
     type Output = Rgb;

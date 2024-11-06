@@ -18,7 +18,7 @@ use winit::{
     dpi::PhysicalSize,
     event::WindowEvent,
     event_loop::{ControlFlow, EventLoop, EventLoopProxy},
-    window::{Window, WindowId},
+    window::{Window, WindowAttributes, WindowId},
 };
 
 pub fn run() -> Result<(), Box<dyn Error>> {
@@ -88,55 +88,47 @@ impl State<'_> {
             columns: size.width as usize / 30,
         });
         self.display.set_size(size.width, size.height);
+
         self.display.window.request_redraw();
     }
 
-    fn redraw(&mut self) {
-        self.display.draw(&mut self.terminal);
+    fn advance(&mut self, processor: &mut Processor) -> bool {
+        let mut read_buffer = [0; 65536];
 
-        //let mut read_buffer = [0; 65536];
-        //
-        //let res = self.pty.read(&mut read_buffer);
-        //
-        //match res {
-        //    Ok(0) => return,
-        //    Ok(size) => {
-        //        self.processor
-        //            .advance(&mut self.terminal, &read_buffer[..size]);
-        //
-        //        if let Some(display) = &mut self.display {
-        //            display.draw(&mut self.terminal);
-        //        }
-        //    }
-        //    Err(e) => {
-        //        debug!("error reading: {e:?}");
-        //    }
-        //};
+        let res = self.pty.read(&mut read_buffer);
+
+        match res {
+            Ok(0) => false,
+            Ok(size) => {
+                processor.advance(&mut self.terminal, &read_buffer[..size]);
+
+                true
+            }
+            Err(e) => {
+                debug!("error reading: {e:?}");
+
+                false
+            }
+        }
+    }
+
+    fn draw(&mut self) {
+        self.display.draw(&mut self.terminal);
     }
 }
 
 struct Application<'a> {
     processor: Processor,
-
-    // TODO: move into separate struct so that multiple windows could be supported
     states: HashMap<WindowId, State<'a>>,
     event_loop_proxy: EventLoopProxy<Event>,
 }
 
 impl Application<'_> {
     pub fn new(event_loop_proxy: EventLoopProxy<Event>) -> Self {
-        //let terminal = Terminal::new(
-        //    Dimensions::default(),
-        //    TerminalEventListener::new(event_loop_proxy),
-        //);
-
         Self {
             processor: Processor::new(),
             states: HashMap::new(),
             event_loop_proxy,
-            //display: None,
-            //terminal,
-            //pty,
         }
     }
 }
@@ -186,7 +178,11 @@ impl ApplicationHandler<Event> for Application<'_> {
                 state.set_scale_factor(scale_factor)
             }
             WindowEvent::Resized(size) => state.set_size(size),
-            WindowEvent::RedrawRequested => state.redraw(),
+            WindowEvent::RedrawRequested => {
+                if state.advance(&mut self.processor) {
+                    state.draw()
+                }
+            }
             _ => (),
         }
     }

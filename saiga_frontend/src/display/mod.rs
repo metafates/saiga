@@ -80,11 +80,7 @@ impl Display<'_> {
                 depth_stencil_attachment: None,
             });
 
-            self.brushes.draw(
-                &mut self.context,
-                &mut rpass,
-                terminal.grid().iter().collect(),
-            );
+            self.brushes.draw(&mut self.context, &mut rpass, terminal);
         }
 
         self.context.queue.submit(Some(encoder.finish()));

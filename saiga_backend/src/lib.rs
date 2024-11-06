@@ -4,7 +4,8 @@ use event::{Event, EventListener};
 use grid::{Dimensions, Grid};
 use log::{debug, trace};
 use saiga_vte::ansi::handler::{
-    Attribute, Charset, CharsetIndex, Handler, NamedPrivateMode, PrivateMode,
+    Attribute, Charset, CharsetIndex, Color, Handler, NamedColor, NamedPrivateMode, PrivateMode,
+    Rgb,
 };
 use unicode_width::UnicodeWidthChar;
 
@@ -46,6 +47,44 @@ impl<E: EventListener> Terminal<E> {
 
     pub fn resize(&mut self, dimensions: Dimensions) {
         self.grid.resize(dimensions);
+    }
+
+    pub fn get_color(&self, color: Color) -> Rgb {
+        match color {
+            Color::Spec(rgb) => rgb,
+            Color::Named(named_color) => match named_color {
+                NamedColor::Black => todo!(),
+                NamedColor::Red => todo!(),
+                NamedColor::Green => todo!(),
+                NamedColor::Yellow => todo!(),
+                NamedColor::Blue => todo!(),
+                NamedColor::Magenta => todo!(),
+                NamedColor::Cyan => todo!(),
+                NamedColor::White => todo!(),
+                NamedColor::BrightBlack => todo!(),
+                NamedColor::BrightRed => todo!(),
+                NamedColor::BrightGreen => todo!(),
+                NamedColor::BrightYellow => todo!(),
+                NamedColor::BrightBlue => todo!(),
+                NamedColor::BrightMagenta => todo!(),
+                NamedColor::BrightCyan => todo!(),
+                NamedColor::BrightWhite => todo!(),
+                NamedColor::Foreground => todo!(),
+                NamedColor::Background => todo!(),
+                NamedColor::Cursor => todo!(),
+                NamedColor::DimBlack => todo!(),
+                NamedColor::DimRed => todo!(),
+                NamedColor::DimGreen => todo!(),
+                NamedColor::DimYellow => todo!(),
+                NamedColor::DimBlue => todo!(),
+                NamedColor::DimMagenta => todo!(),
+                NamedColor::DimCyan => todo!(),
+                NamedColor::DimWhite => todo!(),
+                NamedColor::BrightForeground => todo!(),
+                NamedColor::DimForeground => todo!(),
+            },
+            Color::Indexed(index) => todo!(),
+        }
     }
 
     fn write_at_cursor(&mut self, c: char) {
@@ -235,7 +274,33 @@ impl<E: EventListener> Handler for Terminal<E> {
     fn set_attribute(&mut self, attribute: Attribute) {
         trace!("set_attribute: attribute={attribute:?}");
 
-        todo!()
+        match attribute {
+            Attribute::Reset => todo!(),
+            Attribute::Bold => todo!(),
+            Attribute::Dim => todo!(),
+            Attribute::Italic => todo!(),
+            Attribute::Underline => todo!(),
+            Attribute::DoubleUnderline => todo!(),
+            Attribute::Undercurl => todo!(),
+            Attribute::DottedUnderline => todo!(),
+            Attribute::DashedUnderline => todo!(),
+            Attribute::BlinkSlow => todo!(),
+            Attribute::BlinkFast => todo!(),
+            Attribute::Reverse => todo!(),
+            Attribute::Hidden => todo!(),
+            Attribute::Strike => todo!(),
+            Attribute::CancelBold => todo!(),
+            Attribute::CancelBoldDim => todo!(),
+            Attribute::CancelItalic => todo!(),
+            Attribute::CancelUnderline => todo!(),
+            Attribute::CancelBlink => todo!(),
+            Attribute::CancelReverse => todo!(),
+            Attribute::CancelHidden => todo!(),
+            Attribute::CancelStrike => todo!(),
+            Attribute::Foreground(color) => todo!(),
+            Attribute::Background(color) => todo!(),
+            Attribute::UnderlineColor(color) => todo!(),
+        }
     }
 
     fn reset_state(&mut self) {
