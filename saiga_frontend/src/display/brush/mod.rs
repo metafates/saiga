@@ -7,18 +7,18 @@ pub mod rect;
 
 #[derive(Debug)]
 pub struct Brushes {
-    rect: rect::Brush,
+    rect_brush: rect::Brush,
 }
 
 impl Brushes {
     pub fn new(ctx: &context::Context) -> Self {
         Self {
-            rect: rect::Brush::new(ctx),
+            rect_brush: rect::Brush::new(ctx),
         }
     }
 
     pub fn resize(&mut self, ctx: &mut context::Context) {
-        self.rect.resize(ctx);
+        self.rect_brush.resize(ctx);
     }
 
     pub fn draw<E: EventListener>(
@@ -53,6 +53,6 @@ impl Brushes {
             })
             .collect();
 
-        self.rect.draw(ctx, rpass, rects);
+        self.rect_brush.draw(ctx, rpass, rects);
     }
 }

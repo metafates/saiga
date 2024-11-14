@@ -4,6 +4,7 @@ use cell::Cell;
 use saiga_vte::ansi::handler::{Charset, CharsetIndex};
 
 pub mod cell;
+pub mod resize;
 
 pub type Line = usize;
 pub type Column = usize;
@@ -110,17 +111,6 @@ impl Grid {
         }
     }
 
-    pub fn resize(&mut self, dimensions: Dimensions) {
-        // TODO: rewrite this. just a placeholder
-        self.dimensions = dimensions;
-
-        let mut rows = Vec::with_capacity(dimensions.rows);
-
-        rows.resize(dimensions.rows, Row::new(dimensions.columns));
-
-        self.rows = rows;
-    }
-
     pub fn width(&self) -> usize {
         self.dimensions.columns
     }
@@ -131,8 +121,8 @@ impl Grid {
 
     pub fn iter(&self) -> GridIterator<'_> {
         let end = Position {
-            line: self.height() - 1,
-            column: self.width() - 1,
+            line: self.height().saturating_sub(1),
+            column: self.width().saturating_sub(1),
         };
 
         GridIterator {
@@ -190,7 +180,9 @@ impl<'a> Iterator for GridIterator<'a> {
     type Item = PositionedCell;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.current.is_some_and(|p| p == self.end) {
+        // TODO: is this correct?
+        if self.current.is_some_and(|p| p == self.end) || self.end.column == 0 || self.end.line == 0
+        {
             return None;
         }
 

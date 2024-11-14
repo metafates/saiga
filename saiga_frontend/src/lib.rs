@@ -95,7 +95,9 @@ impl State<'_> {
     fn advance(&mut self, processor: &mut Processor) -> bool {
         let mut read_buffer = [0; 65536];
 
+        println!("read start");
         let res = self.pty.read(&mut read_buffer);
+        println!("read done");
 
         match res {
             Ok(0) => false,
@@ -179,9 +181,8 @@ impl ApplicationHandler<Event> for Application<'_> {
             }
             WindowEvent::Resized(size) => state.set_size(size),
             WindowEvent::RedrawRequested => {
-                if state.advance(&mut self.processor) {
-                    state.draw()
-                }
+                state.advance(&mut self.processor);
+                state.draw();
             }
             _ => (),
         }

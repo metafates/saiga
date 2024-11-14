@@ -1,11 +1,11 @@
 use std::{collections::HashMap, mem};
 
 use event::{Event, EventListener};
-use grid::{Dimensions, Grid};
+use grid::{cell::Cell, Column, Dimensions, Grid};
 use log::{debug, trace};
 use saiga_vte::ansi::handler::{
-    Attribute, Charset, CharsetIndex, Color, Handler, NamedColor, NamedPrivateMode, PrivateMode,
-    Rgb,
+    Attribute, Charset, CharsetIndex, Color, Handler, LineClearMode, NamedColor, NamedPrivateMode,
+    PrivateMode, Rgb,
 };
 use unicode_width::UnicodeWidthChar;
 
@@ -22,40 +22,22 @@ pub struct TerminalMode {
     pub urgency_hints: bool,
 }
 
-pub struct Terminal<E: EventListener> {
-    grid: Grid,
+pub struct ColorPalette {}
 
-    mode: TerminalMode,
-    active_charset: CharsetIndex,
-
-    event_listener: E,
+impl Default for ColorPalette {
+    fn default() -> Self {
+        Self {}
+    }
 }
 
-impl<E: EventListener> Terminal<E> {
-    pub fn new(dimensions: Dimensions, event_listener: E) -> Self {
-        Self {
-            grid: Grid::with_dimensions(dimensions),
-            mode: TerminalMode::default(),
-            active_charset: CharsetIndex::default(),
-            event_listener,
-        }
-    }
-
-    pub fn grid(&self) -> &Grid {
-        &self.grid
-    }
-
-    pub fn resize(&mut self, dimensions: Dimensions) {
-        self.grid.resize(dimensions);
-    }
-
+impl ColorPalette {
     pub fn get_color(&self, color: Color) -> Rgb {
         match color {
             Color::Spec(rgb) => rgb,
             Color::Named(named_color) => match named_color {
                 NamedColor::Black => todo!(),
                 NamedColor::Red => todo!(),
-                NamedColor::Green => todo!(),
+                NamedColor::Green => Rgb::new(0, 255, 0),
                 NamedColor::Yellow => todo!(),
                 NamedColor::Blue => todo!(),
                 NamedColor::Magenta => todo!(),
@@ -63,14 +45,14 @@ impl<E: EventListener> Terminal<E> {
                 NamedColor::White => todo!(),
                 NamedColor::BrightBlack => todo!(),
                 NamedColor::BrightRed => todo!(),
-                NamedColor::BrightGreen => todo!(),
+                NamedColor::BrightGreen => Rgb::new(170, 255, 0),
                 NamedColor::BrightYellow => todo!(),
                 NamedColor::BrightBlue => todo!(),
                 NamedColor::BrightMagenta => todo!(),
                 NamedColor::BrightCyan => todo!(),
                 NamedColor::BrightWhite => todo!(),
-                NamedColor::Foreground => todo!(),
-                NamedColor::Background => todo!(),
+                NamedColor::Foreground => Rgb::new(255, 255, 255),
+                NamedColor::Background => Rgb::new(0, 0, 0),
                 NamedColor::Cursor => todo!(),
                 NamedColor::DimBlack => todo!(),
                 NamedColor::DimRed => todo!(),
@@ -85,6 +67,40 @@ impl<E: EventListener> Terminal<E> {
             },
             Color::Indexed(index) => todo!(),
         }
+    }
+}
+
+pub struct Terminal<E: EventListener> {
+    grid: Grid,
+
+    mode: TerminalMode,
+    active_charset: CharsetIndex,
+    color_palette: ColorPalette,
+
+    event_listener: E,
+}
+
+impl<E: EventListener> Terminal<E> {
+    pub fn new(dimensions: Dimensions, event_listener: E) -> Self {
+        Self {
+            grid: Grid::with_dimensions(dimensions),
+            mode: TerminalMode::default(),
+            active_charset: CharsetIndex::default(),
+            color_palette: Default::default(),
+            event_listener,
+        }
+    }
+
+    pub fn grid(&self) -> &Grid {
+        &self.grid
+    }
+
+    pub fn resize(&mut self, dimensions: Dimensions) {
+        self.grid.resize(dimensions);
+    }
+
+    pub fn get_color(&self, color: Color) -> Rgb {
+        self.color_palette.get_color(color)
     }
 
     fn write_at_cursor(&mut self, c: char) {
@@ -275,10 +291,10 @@ impl<E: EventListener> Handler for Terminal<E> {
         trace!("set_attribute: attribute={attribute:?}");
 
         match attribute {
-            Attribute::Reset => todo!(),
-            Attribute::Bold => todo!(),
+            Attribute::Reset => self.grid.cursor.template.reset_template(),
+            Attribute::Bold => self.grid.cursor.template.bold = true,
             Attribute::Dim => todo!(),
-            Attribute::Italic => todo!(),
+            Attribute::Italic => self.grid.cursor.template.italic = true,
             Attribute::Underline => todo!(),
             Attribute::DoubleUnderline => todo!(),
             Attribute::Undercurl => todo!(),
@@ -297,8 +313,8 @@ impl<E: EventListener> Handler for Terminal<E> {
             Attribute::CancelReverse => todo!(),
             Attribute::CancelHidden => todo!(),
             Attribute::CancelStrike => todo!(),
-            Attribute::Foreground(color) => todo!(),
-            Attribute::Background(color) => todo!(),
+            Attribute::Foreground(color) => self.grid.cursor.template.foreground = color,
+            Attribute::Background(color) => self.grid.cursor.template.background = color,
             Attribute::UnderlineColor(color) => todo!(),
         }
     }
@@ -351,10 +367,25 @@ impl<E: EventListener> Handler for Terminal<E> {
         todo!()
     }
 
-    fn clear_line(&mut self, mode: saiga_vte::ansi::handler::LineClearMode) {
+    fn clear_line(&mut self, mode: LineClearMode) {
         trace!("clear_line: mode={mode:?}");
 
-        todo!()
+        let cursor = &self.grid.cursor;
+
+        let (left, right) = match mode {
+            LineClearMode::Right => (cursor.position.column, self.grid.width()),
+            LineClearMode::Left => (0, cursor.position.column),
+            LineClearMode::All => (0, self.grid.width()),
+        };
+
+        let line = cursor.position.line;
+        for cell in &mut self.grid[line][left..right] {
+            // TODO: create cell from template as a method
+            let mut new_cell = Cell::default();
+            new_cell.apply_template(cell);
+
+            *cell = new_cell
+        }
     }
 
     fn save_cursor_position(&mut self) {
