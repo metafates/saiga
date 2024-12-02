@@ -34,7 +34,7 @@ impl UTF8Collector {
 
 pub fn expected_bytes_count(first_byte: u8) -> Option<usize> {
     #[rustfmt::skip]
-    static LENGTHS: [usize; 32] = [
+    const LENGTHS: [usize; 32] = [
         1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
         0, 0, 0, 0, 0, 0, 0, 0,
         2, 2, 2, 2,

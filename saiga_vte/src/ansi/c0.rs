@@ -68,8 +68,8 @@ pub const US: u8 = 0x1F;
 pub const DEL: u8 = 0x7f;
 
 pub const ALL: [u8; 33] = [
-    NUL, SOH, STX, ETX, EOT, ENQ, ACK, BEL, BS, HT, LF, VT, FF, CR, SO, SI, DLE, XON, DC2,
-    XOFF, DC4, NAK, SYN, ETB, CAN, EM, SUB, ESC, FS, GS, RS, US, DEL,
+    NUL, SOH, STX, ETX, EOT, ENQ, ACK, BEL, BS, HT, LF, VT, FF, CR, SO, SI, DLE, XON, DC2, XOFF,
+    DC4, NAK, SYN, ETB, CAN, EM, SUB, ESC, FS, GS, RS, US, DEL,
 ];
 
 use std::{
@@ -82,12 +82,13 @@ static C0_SET: LazyLock<HashSet<u8>> = LazyLock::new(|| ALL.into_iter().collect(
 
 static C0_SPLATS: LazyLock<[Simd<u8, 16>; 33]> = LazyLock::new(|| ALL.map(u8x16::splat));
 
-
 pub fn first_index_of_c0(haystack: &[u8]) -> Option<usize> {
     const LANES: usize = 16;
 
-    let indices = u8x16::from_array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
-    let nulls = u8x16::splat(u8::MAX);
+    const INDICES: Simd<u8, LANES> =
+        u8x16::from_array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+    const NULLS: Simd<u8, LANES> = u8x16::from_array([u8::MAX; LANES]);
+    //let nulls = u8x16::splat(u8::MAX);
 
     let mut pos = 0;
     let mut left = haystack.len();
@@ -105,7 +106,7 @@ pub fn first_index_of_c0(haystack: &[u8]) -> Option<usize> {
                 let matches = h.simd_eq(splat);
 
                 if matches.any() {
-                    let result = matches.select(indices, nulls);
+                    let result = matches.select(INDICES, NULLS);
 
                     Some(result.reduce_min() as usize + pos)
                 } else {
