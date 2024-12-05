@@ -2,17 +2,21 @@ use saiga_backend::{event::EventListener, grid::PositionedCell, Terminal};
 
 use super::context;
 
+pub mod glyph;
 pub mod math;
 pub mod rect;
 
 #[derive(Debug)]
 pub struct Brushes {
+    // TODO: use glyphs
+    glyph_brush: glyph::Brush,
     rect_brush: rect::Brush,
 }
 
 impl Brushes {
     pub fn new(ctx: &context::Context) -> Self {
         Self {
+            glyph_brush: glyph::Brush::new(ctx),
             rect_brush: rect::Brush::new(ctx),
         }
     }

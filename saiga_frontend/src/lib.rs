@@ -6,11 +6,10 @@ use std::{
     collections::HashMap,
     error::Error,
     io::{Read, Write},
-    sync::Arc,
 };
 
 use display::Display;
-use log::debug;
+use log::{debug, error, warn};
 use saiga_backend::{event::Event as TerminalEvent, grid::Dimensions, pty::Pty, Terminal};
 use saiga_vte::ansi::processor::Processor;
 use winit::{
@@ -18,7 +17,7 @@ use winit::{
     dpi::PhysicalSize,
     event::WindowEvent,
     event_loop::{ControlFlow, EventLoop, EventLoopProxy},
-    window::{Window, WindowAttributes, WindowId},
+    window::{Window, WindowId},
 };
 
 pub fn run() -> Result<(), Box<dyn Error>> {
@@ -31,25 +30,31 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+type ScopedEvent = (WindowId, Event);
+
 #[derive(Debug)]
 enum Event {
     Terminal(TerminalEvent),
 }
 
 struct TerminalEventListener {
-    event_loop_proxy: EventLoopProxy<Event>,
+    window_id: WindowId,
+    event_loop_proxy: EventLoopProxy<ScopedEvent>,
 }
 
 impl TerminalEventListener {
-    fn new(event_loop_proxy: EventLoopProxy<Event>) -> Self {
-        Self { event_loop_proxy }
+    fn new(window_id: WindowId, event_loop_proxy: EventLoopProxy<ScopedEvent>) -> Self {
+        Self {
+            window_id,
+            event_loop_proxy,
+        }
     }
 }
 
 impl saiga_backend::event::EventListener for TerminalEventListener {
     fn on_event(&self, event: TerminalEvent) {
         self.event_loop_proxy
-            .send_event(Event::Terminal(event))
+            .send_event((self.window_id, Event::Terminal(event)))
             .expect("event loop closed");
     }
 }
@@ -61,12 +66,13 @@ struct State<'a> {
 }
 
 impl State<'_> {
-    async fn new(window: Window, event_loop_proxy: EventLoopProxy<Event>) -> Self {
+    async fn new(window: Window, event_loop_proxy: EventLoopProxy<ScopedEvent>) -> Self {
+        let window_id = window.id();
         let display = Display::new(window).await;
         let pty = Pty::try_new().unwrap();
         let terminal = Terminal::new(
             Dimensions::default(),
-            TerminalEventListener::new(event_loop_proxy),
+            TerminalEventListener::new(window_id, event_loop_proxy),
         );
 
         Self {
@@ -84,20 +90,20 @@ impl State<'_> {
     fn set_size(&mut self, size: PhysicalSize<u32>) {
         // TODO: compute this properly
         self.terminal.resize(Dimensions {
-            rows: size.height as usize / 60,
+            lines: size.height as usize / 60,
             columns: size.width as usize / 30,
         });
         self.display.set_size(size.width, size.height);
 
-        self.display.window.request_redraw();
+        self.request_redraw();
     }
 
+    /// Read PTY and process output.
+    /// Return value indicate whether PTY contains new data or not
     fn advance(&mut self, processor: &mut Processor) -> bool {
         let mut read_buffer = [0; 65536];
 
-        println!("read start");
         let res = self.pty.read(&mut read_buffer);
-        println!("read done");
 
         match res {
             Ok(0) => false,
@@ -107,7 +113,7 @@ impl State<'_> {
                 true
             }
             Err(e) => {
-                debug!("error reading: {e:?}");
+                error!("error reading pty: {e:?}");
 
                 false
             }
@@ -117,16 +123,20 @@ impl State<'_> {
     fn draw(&mut self) {
         self.display.draw(&mut self.terminal);
     }
+
+    fn request_redraw(&self) {
+        self.display.window.request_redraw();
+    }
 }
 
 struct Application<'a> {
     processor: Processor,
     states: HashMap<WindowId, State<'a>>,
-    event_loop_proxy: EventLoopProxy<Event>,
+    event_loop_proxy: EventLoopProxy<ScopedEvent>,
 }
 
 impl Application<'_> {
-    pub fn new(event_loop_proxy: EventLoopProxy<Event>) -> Self {
+    pub fn new(event_loop_proxy: EventLoopProxy<ScopedEvent>) -> Self {
         Self {
             processor: Processor::new(),
             states: HashMap::new(),
@@ -135,7 +145,7 @@ impl Application<'_> {
     }
 }
 
-impl ApplicationHandler<Event> for Application<'_> {
+impl ApplicationHandler<ScopedEvent> for Application<'_> {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         let window = event_loop
             .create_window(Window::default_attributes())
@@ -147,20 +157,24 @@ impl ApplicationHandler<Event> for Application<'_> {
         self.states.insert(window_id, state);
     }
 
-    fn user_event(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop, event: Event) {
-        // TODO: get window id somehow
+    fn user_event(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop, event: ScopedEvent) {
+        let Some(state) = self.states.get_mut(&event.0) else {
+            warn!(
+                "received event for window {:?} which does not exist",
+                event.0
+            );
+            return;
+        };
 
-        for state in self.states.values_mut() {
-            match &event {
-                Event::Terminal(event) => match event {
-                    TerminalEvent::SetTitle(title) => {
-                        state.display.window.set_title(&title);
-                    }
-                    TerminalEvent::PtyWrite(payload) => {
-                        state.pty.write(&payload).unwrap();
-                    }
-                },
-            }
+        match &event.1 {
+            Event::Terminal(event) => match event {
+                TerminalEvent::SetTitle(title) => {
+                    state.display.window.set_title(&title);
+                }
+                TerminalEvent::PtyWrite(payload) => {
+                    state.pty.write(&payload).unwrap();
+                }
+            },
         }
     }
 
@@ -174,16 +188,17 @@ impl ApplicationHandler<Event> for Application<'_> {
             return;
         };
 
+        if state.advance(&mut self.processor) {
+            state.request_redraw();
+        }
+
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 state.set_scale_factor(scale_factor)
             }
             WindowEvent::Resized(size) => state.set_size(size),
-            WindowEvent::RedrawRequested => {
-                state.advance(&mut self.processor);
-                state.draw();
-            }
+            WindowEvent::RedrawRequested => state.draw(),
             _ => (),
         }
     }

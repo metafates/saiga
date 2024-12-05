@@ -84,10 +84,10 @@ impl<E: EventListener> Terminal<E> {
     pub fn new(dimensions: Dimensions, event_listener: E) -> Self {
         Self {
             grid: Grid::with_dimensions(dimensions),
-            mode: TerminalMode::default(),
-            active_charset: CharsetIndex::default(),
-            color_palette: Default::default(),
             event_listener,
+            mode: Default::default(),
+            active_charset: Default::default(),
+            color_palette: Default::default(),
         }
     }
 

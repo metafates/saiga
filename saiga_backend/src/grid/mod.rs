@@ -38,14 +38,14 @@ impl Row {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Dimensions {
-    pub rows: usize,
+    pub lines: usize,
     pub columns: usize,
 }
 
 impl Default for Dimensions {
     fn default() -> Self {
         Self {
-            rows: 80,
+            lines: 20,
             columns: 40,
         }
     }
@@ -99,9 +99,9 @@ pub struct Grid {
 
 impl Grid {
     pub fn with_dimensions(dimensions: Dimensions) -> Self {
-        let mut rows = Vec::with_capacity(dimensions.rows);
+        let mut rows = Vec::with_capacity(dimensions.lines);
 
-        rows.resize(dimensions.rows, Row::new(dimensions.columns));
+        rows.resize(dimensions.lines, Row::new(dimensions.columns));
 
         Self {
             rows,
@@ -116,7 +116,7 @@ impl Grid {
     }
 
     pub fn height(&self) -> usize {
-        self.dimensions.rows
+        self.dimensions.lines
     }
 
     pub fn iter(&self) -> GridIterator<'_> {
@@ -218,13 +218,13 @@ mod tests {
     #[test]
     fn initialize() {
         let dimensions = Dimensions {
-            rows: 42,
+            lines: 42,
             columns: 37,
         };
 
         let grid = Grid::with_dimensions(dimensions);
 
-        assert_eq!(grid.rows.len(), dimensions.rows);
+        assert_eq!(grid.rows.len(), dimensions.lines);
 
         for row in grid.rows {
             assert_eq!(row.len(), dimensions.columns);
