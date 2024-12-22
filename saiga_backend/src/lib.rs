@@ -35,16 +35,16 @@ impl ColorPalette {
         match color {
             Color::Spec(rgb) => rgb,
             Color::Named(named_color) => match named_color {
-                NamedColor::Black => todo!(),
-                NamedColor::Red => todo!(),
+                NamedColor::Black => Rgb::new(0, 0, 0),
+                NamedColor::Red => Rgb::new(255, 0, 0),
                 NamedColor::Green => Rgb::new(0, 255, 0),
                 NamedColor::Yellow => todo!(),
-                NamedColor::Blue => todo!(),
+                NamedColor::Blue => Rgb::new(0, 255, 0),
                 NamedColor::Magenta => todo!(),
-                NamedColor::Cyan => todo!(),
-                NamedColor::White => todo!(),
-                NamedColor::BrightBlack => todo!(),
-                NamedColor::BrightRed => todo!(),
+                NamedColor::Cyan => Rgb::new(0, 255, 255),
+                NamedColor::White => Rgb::new(255, 255, 255),
+                NamedColor::BrightBlack => Rgb::new(0, 0, 0),
+                NamedColor::BrightRed => Rgb::new(255, 0, 0),
                 NamedColor::BrightGreen => Rgb::new(170, 255, 0),
                 NamedColor::BrightYellow => todo!(),
                 NamedColor::BrightBlue => todo!(),
@@ -65,7 +65,11 @@ impl ColorPalette {
                 NamedColor::BrightForeground => todo!(),
                 NamedColor::DimForeground => todo!(),
             },
-            Color::Indexed(index) => todo!(),
+            Color::Indexed(index) => {
+                println!("{index:?}");
+
+                Rgb::new(255, 255, 255)
+            }
         }
     }
 }
@@ -293,7 +297,7 @@ impl<E: EventListener> Handler for Terminal<E> {
         match attribute {
             Attribute::Reset => self.grid.cursor.template.reset_template(),
             Attribute::Bold => self.grid.cursor.template.bold = true,
-            Attribute::Dim => todo!(),
+            Attribute::Dim => self.grid.cursor.template.dim = true,
             Attribute::Italic => self.grid.cursor.template.italic = true,
             Attribute::Underline => todo!(),
             Attribute::DoubleUnderline => todo!(),
@@ -427,7 +431,11 @@ impl<E: EventListener> Handler for Terminal<E> {
     fn backspace(&mut self) {
         trace!("backspace");
 
-        todo!()
+        if self.grid.cursor.position.column <= 0 {
+            return;
+        }
+
+        self.grid.cursor.position.column -= 1;
     }
 
     fn substitute(&mut self) {

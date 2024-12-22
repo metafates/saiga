@@ -15,8 +15,9 @@ use saiga_vte::ansi::processor::Processor;
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
-    event::WindowEvent,
+    event::{ElementState, KeyEvent, WindowEvent},
     event_loop::{ControlFlow, EventLoop, EventLoopProxy},
+    keyboard::PhysicalKey,
     window::{Window, WindowId},
 };
 
@@ -120,6 +121,15 @@ impl State<'_> {
         }
     }
 
+    fn write(&mut self, buf: &[u8]) {
+        match self.pty.write(buf) {
+            Err(e) => {
+                error!("error writing pty: {e:?}");
+            }
+            _ => {}
+        }
+    }
+
     fn draw(&mut self) {
         self.display.draw(&mut self.terminal);
     }
@@ -158,21 +168,21 @@ impl ApplicationHandler<ScopedEvent> for Application<'_> {
     }
 
     fn user_event(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop, event: ScopedEvent) {
-        let Some(state) = self.states.get_mut(&event.0) else {
-            warn!(
-                "received event for window {:?} which does not exist",
-                event.0
-            );
+        let window_id = event.0;
+        let event = event.1;
+
+        let Some(state) = self.states.get_mut(&window_id) else {
+            warn!("received event for window {window_id:?} which does not exist",);
             return;
         };
 
-        match &event.1 {
+        match &event {
             Event::Terminal(event) => match event {
                 TerminalEvent::SetTitle(title) => {
                     state.display.window.set_title(&title);
                 }
                 TerminalEvent::PtyWrite(payload) => {
-                    state.pty.write(&payload).unwrap();
+                    state.write(&payload);
                 }
                 TerminalEvent::Bell => {
                     println!("bell");
@@ -202,6 +212,14 @@ impl ApplicationHandler<ScopedEvent> for Application<'_> {
             }
             WindowEvent::Resized(size) => state.set_size(size),
             WindowEvent::RedrawRequested => state.draw(),
+            WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
+                match event.text {
+                    Some(text) => state.write(text.as_bytes()),
+                    None => {
+                        println!("{:?}", event.logical_key)
+                    }
+                }
+            }
             _ => (),
         }
     }
