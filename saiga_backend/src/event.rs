@@ -3,6 +3,7 @@ pub enum Event {
     SetTitle(String),
 
     PtyWrite(Vec<u8>),
+    Bell,
 }
 
 pub trait EventListener {

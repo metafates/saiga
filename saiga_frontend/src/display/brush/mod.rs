@@ -1,4 +1,5 @@
 use saiga_backend::{event::EventListener, grid::PositionedCell, Terminal};
+use saiga_vte::ansi::handler::Rgb;
 
 use super::context;
 
@@ -8,7 +9,6 @@ pub mod rect;
 
 #[derive(Debug)]
 pub struct Brushes {
-    // TODO: use glyphs
     glyph_brush: glyph::Brush,
     rect_brush: rect::Brush,
 }
@@ -23,6 +23,7 @@ impl Brushes {
 
     pub fn resize(&mut self, ctx: &mut context::Context) {
         self.rect_brush.resize(ctx);
+        self.glyph_brush.resize(ctx);
     }
 
     pub fn draw<E: EventListener>(
@@ -34,29 +35,33 @@ impl Brushes {
         // TODO: make this value non-hardcoded
         const SIZE: f32 = 30.0;
 
-        let rects = terminal
-            .grid()
-            .iter()
-            .map(|c| {
-                // TODO: use background
-                let color = terminal.get_color(c.value.foreground);
+        let grid = terminal.grid();
 
-                rect::Rect {
-                    position: [
-                        c.position.column as f32 * (SIZE / 2.0),
-                        c.position.line as f32 * SIZE,
-                    ],
-                    color: [
-                        color.r as f32 / u8::MAX as f32,
-                        color.g as f32 / u8::MAX as f32,
-                        color.b as f32 / u8::MAX as f32,
-                        1.0,
-                    ],
-                    size: [SIZE, SIZE],
-                }
+        let mut rects: Vec<rect::Rect> = Vec::with_capacity(grid.width() * grid.height());
+
+        for c in grid.iter() {
+            let color = terminal.get_color(c.value.background);
+
+            rects.push(rect::Rect {
+                position: [
+                    c.position.column as f32 * (SIZE / 2.0),
+                    c.position.line as f32 * SIZE,
+                ],
+                color: rgb_to_wgpu_color(color),
+                size: [SIZE, SIZE],
             })
-            .collect();
+        }
 
         self.rect_brush.draw(ctx, rpass, rects);
+        self.glyph_brush.draw(ctx, rpass, terminal);
     }
+}
+
+fn rgb_to_wgpu_color(rgb: Rgb) -> [f32; 4] {
+    [
+        rgb.r as f32 / u8::MAX as f32,
+        rgb.g as f32 / u8::MAX as f32,
+        rgb.b as f32 / u8::MAX as f32,
+        1.0,
+    ]
 }

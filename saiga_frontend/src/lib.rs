@@ -174,6 +174,9 @@ impl ApplicationHandler<ScopedEvent> for Application<'_> {
                 TerminalEvent::PtyWrite(payload) => {
                     state.pty.write(&payload).unwrap();
                 }
+                TerminalEvent::Bell => {
+                    println!("bell");
+                }
             },
         }
     }

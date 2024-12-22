@@ -421,7 +421,7 @@ impl<E: EventListener> Handler for Terminal<E> {
     fn ring_bell(&mut self) {
         trace!("ring_bell");
 
-        todo!()
+        self.event_listener.on_event(Event::Bell);
     }
 
     fn backspace(&mut self) {

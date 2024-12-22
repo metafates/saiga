@@ -6,8 +6,9 @@ edition = "2021"
 [dependencies]
 saiga_backend = { path = "../saiga_backend" }
 saiga_vte = { path = "../saiga_vte" }
-wgpu = "22.1.0"
+wgpu = "23.0.1"
 winit = "0.30.5"
 log = "0.4.22"
-pollster = "0.3.0"
+pollster = "0.4.0"
 bytemuck = { version = "1.19.0", features = ["derive"] }
+glyphon = "0.7"

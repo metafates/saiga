@@ -1,6 +1,8 @@
-use std::sync::Arc;
+use std::{fmt::Debug, sync::Arc};
 
 use winit::window::Window;
+
+const USE_WEB_COLORS: bool = false;
 
 #[derive(Debug)]
 pub struct Context<'a> {
@@ -9,6 +11,7 @@ pub struct Context<'a> {
     pub queue: wgpu::Queue,
     pub format: wgpu::TextureFormat,
     pub alpha_mode: wgpu::CompositeAlphaMode,
+    pub color_mode: glyphon::ColorMode,
 
     pub width: u32,
     pub height: u32,
@@ -25,7 +28,17 @@ impl Context<'_> {
             ..Default::default()
         });
 
+        let (color_mode, format) = if USE_WEB_COLORS {
+            (glyphon::ColorMode::Web, wgpu::TextureFormat::Bgra8Unorm)
+        } else {
+            (
+                glyphon::ColorMode::Accurate,
+                wgpu::TextureFormat::Bgra8UnormSrgb,
+            )
+        };
+
         let surface = instance.create_surface(window.clone()).unwrap();
+
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
@@ -34,8 +47,6 @@ impl Context<'_> {
             })
             .await
             .expect("Request adapter");
-
-        let format = wgpu::TextureFormat::Bgra8Unorm;
 
         let (device, queue) = request_device(&adapter).await;
 
@@ -47,6 +58,7 @@ impl Context<'_> {
             queue,
             alpha_mode,
             format,
+            color_mode,
             width: size.width,
             height: size.height,
             scale_factor: window.scale_factor(),
