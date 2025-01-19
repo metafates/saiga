@@ -216,7 +216,7 @@ impl<E: EventListener> Handler for Terminal<E> {
             return;
         }
 
-        todo!()
+        todo!("linefeed")
     }
 
     fn set_title(&mut self, title: &str) {
@@ -227,19 +227,19 @@ impl<E: EventListener> Handler for Terminal<E> {
     }
 
     fn set_cursor_shape(&mut self, shape: saiga_vte::ansi::handler::CursorShape) {
-        todo!()
+        todo!("set_cursor_shape")
     }
 
     fn set_cursor_position(&mut self, position: saiga_vte::ansi::handler::Position) {
-        todo!()
+        todo!("set_cursor_position")
     }
 
     fn set_cursor_line(&mut self, line: saiga_vte::ansi::handler::Line) {
-        todo!()
+        todo!("set_cursor_line")
     }
 
     fn set_cursor_column(&mut self, column: saiga_vte::ansi::handler::Column) {
-        todo!()
+        todo!("set_cursor_column")
     }
 
     fn set_active_charset(&mut self, charset: saiga_vte::ansi::handler::CharsetIndex) {
@@ -250,13 +250,13 @@ impl<E: EventListener> Handler for Terminal<E> {
     fn set_clipboard(&mut self, clipboard: u8, payload: &[u8]) {
         trace!("set_clipboard: clipboard={clipboard:?} payload={payload:?}");
 
-        todo!()
+        todo!("set_clipboard")
     }
 
     fn set_mode(&mut self, mode: saiga_vte::ansi::handler::Mode) {
         trace!("set_mode: mode={mode:?}");
 
-        todo!()
+        todo!("set_mode")
     }
 
     fn set_private_mode(&mut self, mode: PrivateMode) {
@@ -326,49 +326,49 @@ impl<E: EventListener> Handler for Terminal<E> {
     fn reset_state(&mut self) {
         trace!("reset_state");
 
-        todo!()
+        todo!("reset_state")
     }
 
     fn put_tab(&mut self) {
         trace!("put_tab");
 
-        todo!()
+        todo!("put_tab")
     }
 
     fn put_hyperlink(&mut self, hyperlink: saiga_vte::ansi::handler::Hyperlink) {
         trace!("put_hyperlink: hyperlink={hyperlink:?}");
 
-        todo!()
+        todo!("put_hyperlink")
     }
 
     fn put_blank(&mut self, count: usize) {
         trace!("put_blank: count={count:?}");
 
-        todo!()
+        todo!("put_blank")
     }
 
     fn report_clipboard(&mut self, clipboard: u8) {
         trace!("report_clipboard: clipboard={clipboard:?}");
 
-        todo!()
+        todo!("report_clipboard")
     }
 
     fn report_terminal(&mut self) {
         trace!("report_terminal");
 
-        todo!()
+        todo!("report_terminal")
     }
 
     fn report_mode(&mut self, mode: saiga_vte::ansi::handler::Mode) {
         trace!("report_mode: mode={mode:?}");
 
-        todo!()
+        todo!("report_mode")
     }
 
     fn clear_screen(&mut self, mode: saiga_vte::ansi::handler::ScreenClearMode) {
         trace!("clear_screen: mode={mode:?}");
 
-        todo!()
+        todo!("clear_screen")
     }
 
     fn clear_line(&mut self, mode: LineClearMode) {
@@ -395,31 +395,31 @@ impl<E: EventListener> Handler for Terminal<E> {
     fn save_cursor_position(&mut self) {
         trace!("save_cursor_position");
 
-        todo!()
+        todo!("save_cursor_position")
     }
 
     fn restore_cursor_position(&mut self) {
         trace!("restore_cursor_position");
 
-        todo!()
+        todo!("restore_cursor_position")
     }
 
     fn delete_lines(&mut self, count: usize) {
         trace!("delete_lines: count={count:?}");
 
-        todo!()
+        todo!("delete_lines")
     }
 
     fn delete_chars(&mut self, count: usize) {
         trace!("delete_chars: count={count:?}");
 
-        todo!()
+        todo!("delete_chars")
     }
 
     fn erase_chars(&mut self, count: usize) {
         trace!("erase_chars: count={count:?}");
 
-        todo!()
+        todo!("erase_chars")
     }
 
     fn ring_bell(&mut self) {
@@ -441,7 +441,7 @@ impl<E: EventListener> Handler for Terminal<E> {
     fn substitute(&mut self) {
         trace!("substitute");
 
-        todo!()
+        todo!("substitute")
     }
 
     fn set_charset_index(
@@ -457,6 +457,6 @@ impl<E: EventListener> Handler for Terminal<E> {
     fn report_keyboard_mode(&mut self) {
         trace!("report_keyboard_mode");
 
-        todo!()
+        todo!("report_keyboard_mode")
     }
 }

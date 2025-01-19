@@ -48,7 +48,7 @@ impl Pty {
             }
             ForkptyResult::Child => {
                 // TODO: change shell
-                nix::unistd::execvp::<CString>(c"fish", &[])?;
+                nix::unistd::execvp::<CString>(c"sh", &[])?;
 
                 std::process::exit(0);
             }
