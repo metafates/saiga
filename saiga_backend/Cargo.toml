@@ -8,3 +8,6 @@ saiga_vte = { path = "../saiga_vte" }
 unicode-width = "0.2.0"
 nix = { version = "0.29.0", features = ["term", "process", "fs"] }
 log = "0.4.22"
+bitflags = "2.6.0"
+base64 = "0.22.1"
+regex-automata = "0.4.9"

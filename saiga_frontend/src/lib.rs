@@ -10,7 +10,7 @@ use std::{
 
 use display::Display;
 use log::{debug, error, warn};
-use saiga_backend::{event::Event as TerminalEvent, grid::Dimensions, pty::Pty, Terminal};
+use saiga_backend::{event::Event as TerminalEvent, pty::Pty, term::Term};
 use saiga_vte::ansi::processor::Processor;
 use winit::{
     application::ApplicationHandler,
@@ -20,6 +20,7 @@ use winit::{
     keyboard::PhysicalKey,
     window::{Window, WindowId},
 };
+use saiga_backend::term::Config;
 
 pub fn run() -> Result<(), Box<dyn Error>> {
     let event_loop = EventLoop::with_user_event().build()?;
@@ -53,7 +54,7 @@ impl TerminalEventListener {
 }
 
 impl saiga_backend::event::EventListener for TerminalEventListener {
-    fn on_event(&self, event: TerminalEvent) {
+    fn send_event(&self, event: TerminalEvent) {
         self.event_loop_proxy
             .send_event((self.window_id, Event::Terminal(event)))
             .expect("event loop closed");
@@ -63,7 +64,7 @@ impl saiga_backend::event::EventListener for TerminalEventListener {
 struct State<'a> {
     pty: Pty,
     display: Display<'a>,
-    terminal: Terminal<TerminalEventListener>,
+    terminal: Term<TerminalEventListener>,
 }
 
 impl State<'_> {
@@ -71,8 +72,14 @@ impl State<'_> {
         let window_id = window.id();
         let display = Display::new(window).await;
         let pty = Pty::try_new().unwrap();
-        let terminal = Terminal::new(
-            Dimensions::default(),
+        // let terminal = Term::new(
+        //     Dimensions::default(),
+        //     TerminalEventListener::new(window_id, event_loop_proxy),
+        // );
+
+        let terminal = Term::new(
+            Config::default(),
+            &display.size_info,
             TerminalEventListener::new(window_id, event_loop_proxy),
         );
 
@@ -90,10 +97,7 @@ impl State<'_> {
 
     fn set_size(&mut self, size: PhysicalSize<u32>) {
         // TODO: compute this properly
-        self.terminal.resize(Dimensions {
-            lines: size.height as usize / 60,
-            columns: size.width as usize / 30,
-        });
+        self.terminal.resize(self.display.size_info);
         self.display.set_size(size.width, size.height);
 
         self.request_redraw();
@@ -178,15 +182,18 @@ impl ApplicationHandler<ScopedEvent> for Application<'_> {
 
         match &event {
             Event::Terminal(event) => match event {
-                TerminalEvent::SetTitle(title) => {
+                TerminalEvent::Title(title) => {
                     state.display.window.set_title(&title);
                 }
                 TerminalEvent::PtyWrite(payload) => {
-                    state.write(&payload);
+                    state.write(payload.as_bytes());
                 }
                 TerminalEvent::Bell => {
                     println!("bell");
                 }
+                _ => {
+                    warn!("unhandled terminal event: {:?}", event);
+                },
             },
         }
     }

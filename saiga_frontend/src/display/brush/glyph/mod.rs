@@ -3,13 +3,14 @@ use glyphon::{
     Attrs, Buffer, Cache, Color, Family, FontSystem, Metrics, Resolution, Shaping, SwashCache,
     TextArea, TextAtlas, TextBounds, TextRenderer, Viewport,
 };
-use saiga_backend::{
-    event::EventListener,
-    grid::{Position, PositionedCell},
-    Terminal,
-};
+use saiga_backend::{event::EventListener, grid, term::Term};
 use std::fmt::Debug;
+use log::warn;
 use wgpu::{MultisampleState, TextureFormat};
+use saiga_backend::index::Point;
+use saiga_backend::term::cell::ResetDiscriminant;
+use saiga_vte::ansi::handler;
+use saiga_vte::ansi::handler::Rgb;
 
 const FONT_SIZE: u32 = 16;
 
@@ -59,7 +60,7 @@ impl Brush {
         &mut self,
         ctx: &mut context::Context,
         rpass: &mut wgpu::RenderPass,
-        terminal: &mut Terminal<E>,
+        terminal: &mut Term<E>,
     ) {
         self.viewport.update(
             &ctx.queue,
@@ -69,25 +70,27 @@ impl Brush {
             },
         );
 
-        let mut buffers: Vec<(Buffer, Position, Color)> = Vec::new();
+        let mut buffers: Vec<(Buffer, Point, Color)> = Vec::new();
 
-        for cell in terminal.grid().iter() {
-            let Some(ch) = cell.value.char else {
-                continue;
-            };
-
+        for cell in terminal.grid().display_iter() {
             let mut buffer = Buffer::new(&mut self.font_system, Metrics::relative(16.0, 1.0));
 
             buffer.set_size(&mut self.font_system, Some(30.0), Some(30.0));
             buffer.set_text(
                 &mut self.font_system,
-                ch.to_string().as_str(),
+                cell.c.to_string().as_str(),
                 Attrs::new().family(Family::Monospace),
                 Shaping::Basic,
             );
 
-            let fg = terminal.get_color(cell.value.foreground);
-            buffers.push((buffer, cell.position, Color::rgb(fg.r, fg.g, fg.b)));
+            let colors = terminal.colors();
+            let fg = match cell.fg {
+                handler::Color::Named(named) => colors[named],
+                handler::Color::Indexed(index) => colors[index as usize],
+                handler::Color::Spec(rgb) => Some(rgb),
+            }.unwrap_or(Rgb::new(255, 255, 255));
+
+            buffers.push((buffer, cell.point, Color::rgb(fg.r, fg.g, fg.b)));
         }
 
         // TODO: remove hardcode
@@ -95,14 +98,14 @@ impl Brush {
             .iter()
             .map(|(buf, pos, color)| TextArea {
                 buffer: buf,
-                left: pos.column as f32 * 30.0,
-                top: pos.line as f32 * 30.0,
+                left: pos.column.0 as f32 * 30.0,
+                top: pos.line.0 as f32 * 30.0,
                 scale: ctx.scale_factor as f32,
                 bounds: TextBounds {
-                    left: pos.column as i32 * 30,
-                    top: pos.line as i32 * 30,
-                    right: pos.column as i32 * 30 + 30,
-                    bottom: pos.line as i32 * 30 + 60,
+                    left: (pos.column.0 * 30) as i32,
+                    top: pos.line.0 * 30,
+                    right: (pos.column.0 * 30 + 30) as i32,
+                    bottom: pos.line.0 * 30 + 60,
                 },
                 default_color: *color,
                 custom_glyphs: &[],

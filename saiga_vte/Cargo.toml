@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 log = "0.4.22"
 simdutf8 = "0.1.5"
+bitflags = "2.8.0"

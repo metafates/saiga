@@ -4,7 +4,7 @@ use log::debug;
 
 use super::{
     c0,
-    handler::{Charset, CharsetIndex, Column, Direction, Handler, Line, Position, Rgb},
+    handler::{Charset, CharsetIndex, Direction, Handler, Rgb},
 };
 use crate::{
     ansi::handler::{
@@ -44,15 +44,15 @@ impl<'a, H: Handler + 'a> HandlerExecutor<'a, H> {
 
 impl<'a, H: Handler> Executor for HandlerExecutor<'a, H> {
     fn print(&mut self, c: char) {
-        self.handler.put_char(c);
+        self.handler.input(c);
     }
 
     fn execute(&mut self, byte: u8) {
         match byte {
-            c0::HT => self.handler.put_tab(),
+            c0::HT => self.handler.put_tab(1),
             c0::CR => self.handler.carriage_return(),
             c0::BS => self.handler.backspace(),
-            c0::BEL => self.handler.ring_bell(),
+            c0::BEL => self.handler.bell(),
             c0::LF | c0::VT | c0::FF => self.handler.linefeed(),
             c0::SI => self
                 .handler
@@ -98,8 +98,8 @@ impl<'a, H: Handler> Executor for HandlerExecutor<'a, H> {
             [b"0" | b"2", title @ ..] => {
                 let title = title.join(&param::PARAM_SEPARATOR);
 
-                if let Ok(title) = utf8::from_utf8(&title) {
-                    self.handler.set_title(title);
+                if let Ok(title) = simdutf8::basic::from_utf8(&title) {
+                        self.handler.set_title(Some(title.to_string()));
                 }
             }
 
@@ -117,7 +117,7 @@ impl<'a, H: Handler> Executor for HandlerExecutor<'a, H> {
 
                 let uri = utf8::from_utf8(uri).unwrap_or_default().to_string();
 
-                self.handler.put_hyperlink(Hyperlink { id, uri });
+                self.handler.set_hyperlink(Some(Hyperlink { id, uri }));
             }
 
             // Set or query default foreground color.
@@ -136,8 +136,8 @@ impl<'a, H: Handler> Executor for HandlerExecutor<'a, H> {
                 let clipboard = clipboard.first().unwrap_or(&b'c');
 
                 match *payload {
-                    b"?" => self.handler.report_clipboard(*clipboard),
-                    base64 => self.handler.set_clipboard(*clipboard, base64),
+                    b"?" => self.handler.clipboard_load(*clipboard, ""), // TODO
+                    base64 => self.handler.clipboard_store(*clipboard, base64),
                 }
             }
 
@@ -174,7 +174,7 @@ impl<'a, H: Handler> Executor for HandlerExecutor<'a, H> {
                 };
 
                 self.handler
-                    .set_charset_index(index, Charset::SpecialCharacterAndLineDrawing);
+                    .configure_charset(index, Charset::SpecialCharacterAndLineDrawing);
             }
             (b'B', [index]) => {
                 let Ok(index): Result<CharsetIndex, ()> = (*index).try_into() else {
@@ -182,14 +182,14 @@ impl<'a, H: Handler> Executor for HandlerExecutor<'a, H> {
                     return;
                 };
 
-                self.handler.set_charset_index(index, Charset::Ascii);
+                self.handler.configure_charset(index, Charset::Ascii);
             }
             (b'D', []) => self.handler.linefeed(),
             (b'E', []) => {
                 self.handler.linefeed();
                 self.handler.carriage_return();
             }
-            (b'Z', []) => self.handler.report_terminal(),
+            (b'Z', []) => self.handler.identify_terminal(None), // TODO
             (b'c', []) => self.handler.reset_state(),
             (b'7', []) => self.handler.save_cursor_position(),
             (b'8', []) => self.handler.restore_cursor_position(),
@@ -229,37 +229,37 @@ impl<'a, H: Handler> Executor for HandlerExecutor<'a, H> {
         };
 
         match (action, intermediates) {
-            ('@', []) => self.handler.put_blank(next_param_or(1).into()),
+            ('@', []) => self.handler.insert_blank(next_param_or(1).into()),
             ('A', []) => self
                 .handler
-                .move_cursor(Direction::Up, next_param_or(1).into(), false),
+                .move_up(next_param_or(1).into()),
             ('B' | 'e', []) => {
                 self.handler
-                    .move_cursor(Direction::Down, next_param_or(1).into(), false)
+                    .move_down(next_param_or(1).into())
             }
             ('C' | 'a', []) => {
                 self.handler
-                    .move_cursor(Direction::Right, next_param_or(1).into(), false)
+                    .move_forward(next_param_or(1).into())
             }
-            ('c', _) => self.handler.report_terminal(), // TODO: pass intermediates?
+            ('c', _) => self.handler.identify_terminal(None), // TODO: pass intermediates?
             ('D', []) => self
                 .handler
-                .move_cursor(Direction::Left, next_param_or(1).into(), false),
-            ('d', []) => self.handler.set_cursor_line(next_param_or(1) as Line - 1),
+                .move_backward(next_param_or(1).into()),
+            ('d', []) => self.handler.goto_line((next_param_or(1) - 1) as i32),
             ('E', []) => self
                 .handler
-                .move_cursor(Direction::Down, next_param_or(1).into(), true),
+                .move_down(next_param_or(1).into()),
             ('F', []) => self
                 .handler
-                .move_cursor(Direction::Up, next_param_or(1).into(), true),
+                .move_up(next_param_or(1).into()),
             ('G' | '`', []) => self
                 .handler
-                .set_cursor_column(next_param_or(1) as Column - 1),
+                .goto_col((next_param_or(1) - 1) as usize),
             ('H' | 'f', []) => {
-                let line = next_param_or(1) as Line - 1;
-                let column = next_param_or(1) as Column - 1;
+                let line = next_param_or(1)  - 1;
+                let column = next_param_or(1)  - 1;
 
-                self.handler.set_cursor_position(Position { line, column });
+                self.handler.goto(line as i32, column as usize);
             }
             ('h', []) => {
                 for param in params_iter.map(|p| p.as_slice()[0]) {
@@ -299,12 +299,12 @@ impl<'a, H: Handler> Executor for HandlerExecutor<'a, H> {
             ('M', []) => self.handler.delete_lines(next_param_or(1).into()),
             ('m', []) => {
                 if params.is_empty() {
-                    self.handler.set_attribute(Attribute::Reset);
+                    self.handler.terminal_attribute(Attribute::Reset);
                     return;
                 }
 
                 for attribtue in attrs_from_sgr_parameters(params) {
-                    self.handler.set_attribute(attribtue);
+                    self.handler.terminal_attribute(attribtue);
                 }
             }
             ('P', []) => self.handler.delete_chars(next_param_or(1).into()),
@@ -435,387 +435,3 @@ where
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::ansi::handler::{Charset, CharsetIndex, CursorShape};
-
-    use super::*;
-
-    #[derive(Debug, PartialEq, Eq)]
-    enum Event {
-        SetTitle(String),
-        SetCursorShape(CursorShape),
-        SetCursorPosition(Position),
-        SetCursorLine(Line),
-        SetClipboard {
-            clipboard: u8,
-            payload: Vec<u8>,
-        },
-        SetCursorColumn(Column),
-        SetCharsetIndex {
-            index: CharsetIndex,
-            charset: Charset,
-        },
-        SetActiveCharset(CharsetIndex),
-        SetMode(Mode),
-        SetPrivateMode(PrivateMode),
-        SetAttribute(Attribute),
-        MoveCursor {
-            direction: Direction,
-            count: usize,
-            reset_column: bool,
-        },
-        PutChar(char),
-        PutTab,
-        PutHyperlink(Hyperlink),
-        PutBlank(usize),
-        ReportClipboard(u8),
-        ReportTerminal,
-        ReportMode(Mode),
-        ClearScreen(ScreenClearMode),
-        ClearLine(LineClearMode),
-        SaveCursorPosition,
-        RestoreCursorPosition,
-        DeleteLines(usize),
-        DeleteChars(usize),
-        EraseChars(usize),
-        Newline,
-        CarriageReturn,
-        RingBell,
-        Backspace,
-        Linefeed,
-        Substitute,
-        ResetState,
-    }
-
-    #[derive(Default)]
-    struct MockHandler {
-        events: Vec<Event>,
-    }
-
-    impl Handler for MockHandler {
-        fn set_title(&mut self, title: &str) {
-            self.events.push(Event::SetTitle(title.to_string()));
-        }
-
-        fn set_cursor_shape(&mut self, shape: CursorShape) {
-            self.events.push(Event::SetCursorShape(shape));
-        }
-
-        fn set_cursor_position(&mut self, position: Position) {
-            self.events.push(Event::SetCursorPosition(position))
-        }
-
-        fn set_cursor_line(&mut self, line: Line) {
-            self.events.push(Event::SetCursorLine(line))
-        }
-
-        fn set_cursor_column(&mut self, column: Column) {
-            self.events.push(Event::SetCursorColumn(column))
-        }
-
-        fn set_clipboard(&mut self, clipboard: u8, payload: &[u8]) {
-            self.events.push(Event::SetClipboard {
-                clipboard,
-                payload: payload.to_vec(),
-            });
-        }
-
-        fn set_mode(&mut self, mode: Mode) {
-            self.events.push(Event::SetMode(mode));
-        }
-
-        fn set_private_mode(&mut self, mode: PrivateMode) {
-            self.events.push(Event::SetPrivateMode(mode));
-        }
-
-        fn set_attribute(&mut self, attribute: Attribute) {
-            self.events.push(Event::SetAttribute(attribute));
-        }
-
-        fn reset_state(&mut self) {
-            self.events.push(Event::ResetState);
-        }
-
-        fn move_cursor(&mut self, direction: Direction, count: usize, reset_column: bool) {
-            self.events.push(Event::MoveCursor {
-                direction,
-                count,
-                reset_column,
-            });
-        }
-
-        fn put_char(&mut self, c: char) {
-            self.events.push(Event::PutChar(c));
-        }
-
-        fn put_tab(&mut self) {
-            self.events.push(Event::PutTab);
-        }
-
-        fn put_hyperlink(&mut self, hyperlink: Hyperlink) {
-            self.events.push(Event::PutHyperlink(hyperlink));
-        }
-
-        fn put_blank(&mut self, count: usize) {
-            self.events.push(Event::PutBlank(count));
-        }
-
-        fn report_clipboard(&mut self, clipboard: u8) {
-            self.events.push(Event::ReportClipboard(clipboard));
-        }
-
-        fn report_terminal(&mut self) {
-            self.events.push(Event::ReportTerminal);
-        }
-
-        fn report_mode(&mut self, mode: Mode) {
-            self.events.push(Event::ReportMode(mode));
-        }
-
-        fn clear_screen(&mut self, mode: ScreenClearMode) {
-            self.events.push(Event::ClearScreen(mode));
-        }
-
-        fn clear_line(&mut self, mode: LineClearMode) {
-            self.events.push(Event::ClearLine(mode));
-        }
-
-        fn save_cursor_position(&mut self) {
-            self.events.push(Event::SaveCursorPosition);
-        }
-
-        fn restore_cursor_position(&mut self) {
-            self.events.push(Event::RestoreCursorPosition);
-        }
-
-        fn delete_lines(&mut self, count: usize) {
-            self.events.push(Event::DeleteLines(count));
-        }
-
-        fn delete_chars(&mut self, count: usize) {
-            self.events.push(Event::DeleteChars(count));
-        }
-
-        fn erase_chars(&mut self, count: usize) {
-            self.events.push(Event::EraseChars(count));
-        }
-
-        fn newline(&mut self) {
-            self.events.push(Event::Newline);
-        }
-
-        fn carriage_return(&mut self) {
-            self.events.push(Event::CarriageReturn);
-        }
-
-        fn ring_bell(&mut self) {
-            self.events.push(Event::RingBell);
-        }
-
-        fn backspace(&mut self) {
-            self.events.push(Event::Backspace);
-        }
-
-        fn linefeed(&mut self) {
-            self.events.push(Event::Linefeed);
-        }
-
-        fn substitute(&mut self) {
-            self.events.push(Event::Substitute);
-        }
-
-        fn set_charset_index(&mut self, index: CharsetIndex, charset: Charset) {
-            self.events.push(Event::SetCharsetIndex { index, charset });
-        }
-
-        fn set_active_charset(&mut self, index: CharsetIndex) {
-            self.events.push(Event::SetActiveCharset(index));
-        }
-    }
-
-    #[test]
-    fn set_title() {
-        static BYTES: &[u8] = b"\x1b]0;title ; with semicolon\x07";
-
-        let mut processor = Processor::new();
-        let mut handler = MockHandler::default();
-
-        processor.advance(&mut handler, BYTES);
-
-        assert_eq!(
-            handler.events,
-            [Event::SetTitle("title ; with semicolon".to_string())]
-        )
-    }
-
-    #[test]
-    fn alternate_screen() {
-        static BYTES: &[u8] = b"\x1b[?1049h";
-
-        let mut processor = Processor::new();
-        let mut handler = MockHandler::default();
-
-        processor.advance(&mut handler, BYTES);
-
-        assert_eq!(
-            handler.events,
-            [Event::SetPrivateMode(PrivateMode::Named(
-                NamedPrivateMode::SwapScreenAndSetRestoreCursor
-            ))]
-        )
-    }
-
-    #[test]
-    fn parse_fish_prompt() {
-        static BYTES: &[u8] = b"\x1b[92mx\x1b(B\x1b[m@\x1b(B\x1b[mLains-MacBook\x1b(B\x1b[m \x1b[32m~/P/P/saiga\x1b(B\x1b[m (main)\x1b(B\x1b[m>";
-
-        let mut handler = MockHandler::default();
-        let mut processor = Processor::new();
-
-        processor.advance(&mut handler, BYTES);
-
-        assert_eq!(
-            handler.events,
-            [
-                Event::SetAttribute(Attribute::Foreground(Color::Named(NamedColor::BrightGreen))),
-                Event::PutChar('x'),
-                Event::SetCharsetIndex {
-                    index: CharsetIndex::G0,
-                    charset: Charset::Ascii
-                },
-                Event::SetAttribute(Attribute::Reset),
-                Event::PutChar('@'),
-                Event::SetCharsetIndex {
-                    index: CharsetIndex::G0,
-                    charset: Charset::Ascii
-                },
-                Event::SetAttribute(Attribute::Reset),
-                Event::PutChar('L'),
-                Event::PutChar('a'),
-                Event::PutChar('i'),
-                Event::PutChar('n'),
-                Event::PutChar('s'),
-                Event::PutChar('-'),
-                Event::PutChar('M'),
-                Event::PutChar('a'),
-                Event::PutChar('c'),
-                Event::PutChar('B'),
-                Event::PutChar('o'),
-                Event::PutChar('o'),
-                Event::PutChar('k'),
-                Event::SetCharsetIndex {
-                    index: CharsetIndex::G0,
-                    charset: Charset::Ascii
-                },
-                Event::SetAttribute(Attribute::Reset),
-                Event::PutChar(' '),
-                Event::SetAttribute(Attribute::Foreground(Color::Named(NamedColor::Green))),
-                Event::PutChar('~'),
-                Event::PutChar('/'),
-                Event::PutChar('P'),
-                Event::PutChar('/'),
-                Event::PutChar('P'),
-                Event::PutChar('/'),
-                Event::PutChar('s'),
-                Event::PutChar('a'),
-                Event::PutChar('i'),
-                Event::PutChar('g'),
-                Event::PutChar('a'),
-                Event::SetCharsetIndex {
-                    index: CharsetIndex::G0,
-                    charset: Charset::Ascii
-                },
-                Event::SetAttribute(Attribute::Reset),
-                Event::PutChar(' '),
-                Event::PutChar('('),
-                Event::PutChar('m'),
-                Event::PutChar('a'),
-                Event::PutChar('i'),
-                Event::PutChar('n'),
-                Event::PutChar(')'),
-                Event::SetCharsetIndex {
-                    index: CharsetIndex::G0,
-                    charset: Charset::Ascii
-                },
-                Event::SetAttribute(Attribute::Reset),
-                Event::PutChar('>')
-            ],
-        )
-    }
-
-    #[test]
-    fn parse_control_attribute() {
-        static BYTES: &[u8] = &[0x1b, b'[', b'1', b'm'];
-
-        let mut processor = Processor::new();
-        let mut handler = MockHandler::default();
-
-        processor.advance(&mut handler, BYTES);
-
-        assert_eq!(handler.events, [Event::SetAttribute(Attribute::Bold)]);
-    }
-
-    #[test]
-    fn parse_truecolor_attr() {
-        static BYTES: &[u8] = &[
-            0x1b, b'[', b'3', b'8', b';', b'2', b';', b'1', b'2', b'8', b';', b'6', b'6', b';',
-            b'2', b'5', b'5', b'm',
-        ];
-
-        let mut processor = Processor::new();
-        let mut handler = MockHandler::default();
-
-        processor.advance(&mut handler, BYTES);
-
-        let rgb = Rgb {
-            r: 128,
-            g: 66,
-            b: 255,
-        };
-
-        assert_eq!(
-            handler.events,
-            [Event::SetAttribute(Attribute::Foreground(Color::Spec(rgb)))]
-        )
-    }
-
-    #[test]
-    fn parse_designate_g0_as_line_drawing() {
-        static BYTES: &[u8] = &[0x1b, b'(', b'0'];
-
-        let mut processor = Processor::new();
-        let mut handler = MockHandler::default();
-
-        processor.advance(&mut handler, BYTES);
-
-        assert_eq!(
-            handler.events,
-            [Event::SetCharsetIndex {
-                index: CharsetIndex::G0,
-                charset: Charset::SpecialCharacterAndLineDrawing
-            }]
-        )
-    }
-
-    #[test]
-    fn parse_designate_g1_as_line_drawing_and_invoke() {
-        static BYTES: &[u8] = &[0x1b, b')', b'0', 0x0e];
-
-        let mut processor = Processor::new();
-        let mut handler = MockHandler::default();
-
-        processor.advance(&mut handler, BYTES);
-
-        assert_eq!(
-            handler.events,
-            [
-                Event::SetCharsetIndex {
-                    index: CharsetIndex::G1,
-                    charset: Charset::SpecialCharacterAndLineDrawing
-                },
-                Event::SetActiveCharset(CharsetIndex::G1)
-            ]
-        );
-    }
-}

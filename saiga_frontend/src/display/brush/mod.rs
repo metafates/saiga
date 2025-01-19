@@ -1,4 +1,6 @@
-use saiga_backend::{event::EventListener, grid::PositionedCell, Terminal};
+use saiga_backend::{event::EventListener, term::Term};
+use saiga_backend::grid::Dimensions;
+use saiga_vte::ansi::handler;
 use saiga_vte::ansi::handler::Rgb;
 
 use super::context;
@@ -30,24 +32,31 @@ impl Brushes {
         &mut self,
         ctx: &mut context::Context,
         rpass: &mut wgpu::RenderPass,
-        terminal: &mut Terminal<E>,
+        terminal: &mut Term<E>,
     ) {
         // TODO: make this value non-hardcoded
         const SIZE: f32 = 30.0;
 
         let grid = terminal.grid();
 
-        let mut rects: Vec<rect::Rect> = Vec::with_capacity(grid.width() * grid.height());
+        let mut rects: Vec<rect::Rect> = Vec::with_capacity(grid.columns() * grid.screen_lines());
 
-        for c in grid.iter() {
-            let color = terminal.get_color(c.value.background);
+        for c in grid.display_iter() {
+            let colors = terminal.colors();
+
+            let bg = match c.bg {
+                handler::Color::Named(named) => colors[named],
+                handler::Color::Indexed(index) => colors[index as usize],
+                handler::Color::Spec(rgb) => Some(rgb),
+            }.unwrap_or(Rgb::new(0, 0, 0));
+
 
             rects.push(rect::Rect {
                 position: [
-                    c.position.column as f32 * (SIZE / 2.0),
-                    c.position.line as f32 * SIZE,
+                    c.point.column.0 as f32 * (SIZE / 2.0),
+                    c.point.line.0 as f32 * SIZE,
                 ],
-                color: rgb_to_wgpu_color(color),
+                color: rgb_to_wgpu_color(bg),
                 size: [SIZE, SIZE],
             })
         }
