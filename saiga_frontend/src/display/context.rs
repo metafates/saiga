@@ -56,7 +56,7 @@ impl Context<'_> {
             window_size.width as f32,
             window_size.height as f32,
             window.scale_factor(),
-            30.0,
+            20.0,
             30.0,
             0.0,
             0.0,

@@ -12,13 +12,12 @@ use saiga_vte::ansi::handler::Rgb;
 use std::fmt::Debug;
 use wgpu::{MultisampleState, TextureFormat};
 
-const FONT_SIZE: u32 = 16;
+const FONT_SIZE: f32 = 16.0;
 
 pub struct Brush {
     font_system: FontSystem,
     swash_cache: SwashCache,
     atlas: TextAtlas,
-    buffers: Vec<Buffer>,
     viewport: Viewport,
     text_renderer: TextRenderer,
 }
@@ -40,20 +39,23 @@ impl Brush {
         let text_renderer =
             TextRenderer::new(&mut atlas, &ctx.device, MultisampleState::default(), None);
 
-        Self {
+        Brush {
             font_system,
             swash_cache,
             atlas,
             viewport,
             text_renderer,
-            buffers: vec![],
         }
     }
 
-    pub fn resize(&mut self, ctx: &mut context::Context) {
-        let buffers = Vec::new();
-
-        self.buffers = buffers;
+    pub fn resize(&mut self, ctx: &context::Context) {
+        self.viewport.update(
+            &ctx.queue,
+            Resolution {
+                width: ctx.size.width as u32,
+                height: ctx.size.height as u32,
+            },
+        );
     }
 
     pub fn draw<E: EventListener>(
@@ -62,51 +64,50 @@ impl Brush {
         rpass: &mut wgpu::RenderPass,
         terminal: &mut Term<E>,
     ) {
-        self.viewport.update(
-            &ctx.queue,
-            Resolution {
-                width: ctx.size.width as u32,
-                height: ctx.size.height as u32,
-            },
-        );
+        let buffers: Vec<(Buffer, Point, Color)> = terminal
+            .grid()
+            .display_iter()
+            .map(|cell| {
+                let mut buffer =
+                    Buffer::new(&mut self.font_system, Metrics::relative(FONT_SIZE, 1.3));
 
-        let mut buffers: Vec<(Buffer, Point, Color)> = Vec::new();
+                buffer.set_size(
+                    &mut self.font_system,
+                    Some(ctx.size.cell_width),
+                    Some(ctx.size.cell_height),
+                );
 
-        for cell in terminal.grid().display_iter() {
-            let mut buffer = Buffer::new(&mut self.font_system, Metrics::relative(16.0, 1.0));
+                buffer.set_text(
+                    &mut self.font_system,
+                    cell.c.to_string().as_str(),
+                    Attrs::new().family(Family::Name("JetBrainsMono Nerd Font")),
+                    Shaping::Advanced,
+                );
 
-            buffer.set_size(&mut self.font_system, Some(30.0), Some(30.0));
-            buffer.set_text(
-                &mut self.font_system,
-                cell.c.to_string().as_str(),
-                Attrs::new().family(Family::Monospace),
-                Shaping::Basic,
-            );
+                let colors = terminal.colors();
+                let fg = match cell.fg {
+                    handler::Color::Named(named) => colors[named],
+                    handler::Color::Indexed(index) => colors[index as usize],
+                    handler::Color::Spec(rgb) => Some(rgb),
+                }
+                .unwrap_or(Rgb::new(255, 255, 255));
 
-            let colors = terminal.colors();
-            let fg = match cell.fg {
-                handler::Color::Named(named) => colors[named],
-                handler::Color::Indexed(index) => colors[index as usize],
-                handler::Color::Spec(rgb) => Some(rgb),
-            }
-            .unwrap_or(Rgb::new(255, 255, 255));
+                (buffer, cell.point, Color::rgb(fg.r, fg.g, fg.b))
+            })
+            .collect();
 
-            buffers.push((buffer, cell.point, Color::rgb(fg.r, fg.g, fg.b)));
-        }
-
-        // TODO: remove hardcode
         let text_areas: Vec<TextArea> = buffers
             .iter()
             .map(|(buf, pos, color)| TextArea {
                 buffer: buf,
-                left: pos.column.0 as f32 * 30.0,
-                top: pos.line.0 as f32 * 30.0,
+                left: pos.column.0 as f32 * ctx.size.cell_width,
+                top: pos.line.0 as f32 * ctx.size.cell_height,
                 scale: ctx.size.scale_factor as f32,
                 bounds: TextBounds {
-                    left: (pos.column.0 * 30) as i32,
-                    top: pos.line.0 * 30,
-                    right: (pos.column.0 * 30 + 30) as i32,
-                    bottom: pos.line.0 * 30 + 60,
+                    left: (pos.column.0 * ctx.size.cell_width as usize) as i32,
+                    top: pos.line.0 * ctx.size.cell_height as i32,
+                    right: ((pos.column.0 + 1) * ctx.size.cell_width as usize) as i32,
+                    bottom: (pos.line.0 + 2) * ctx.size.cell_height as i32,
                 },
                 default_color: *color,
                 custom_glyphs: &[],

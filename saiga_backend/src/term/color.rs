@@ -1,6 +1,6 @@
 use std::ops::{Index, IndexMut};
 
-use saiga_vte::ansi::handler::{NamedColor, Rgb};
+use saiga_vte::ansi::handler::{Color, NamedColor, Rgb};
 
 /// Number of terminal colors.
 pub const COUNT: usize = 269;
