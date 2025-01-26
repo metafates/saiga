@@ -10,6 +10,7 @@ use std::{
 
 use display::Display;
 use log::{debug, error, warn};
+use saiga_backend::term::Config;
 use saiga_backend::{event::Event as TerminalEvent, pty::Pty, term::Term};
 use saiga_vte::ansi::processor::Processor;
 use winit::{
@@ -20,7 +21,6 @@ use winit::{
     keyboard::PhysicalKey,
     window::{Window, WindowId},
 };
-use saiga_backend::term::Config;
 
 pub fn run() -> Result<(), Box<dyn Error>> {
     let event_loop = EventLoop::with_user_event().build()?;
@@ -125,12 +125,14 @@ impl State<'_> {
         }
     }
 
-    fn write(&mut self, buf: &[u8]) {
+    fn write(&mut self, buf: &[u8]) -> usize {
         match self.pty.write(buf) {
+            Ok(size) => size,
             Err(e) => {
                 error!("error writing pty: {e:?}");
+
+                0
             }
-            _ => {}
         }
     }
 
@@ -193,7 +195,7 @@ impl ApplicationHandler<ScopedEvent> for Application<'_> {
                 }
                 _ => {
                     warn!("unhandled terminal event: {:?}", event);
-                },
+                }
             },
         }
     }
@@ -221,11 +223,13 @@ impl ApplicationHandler<ScopedEvent> for Application<'_> {
             WindowEvent::RedrawRequested => state.draw(),
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 match event.text {
-                    Some(text) => state.write(text.as_bytes()),
+                    Some(text) => {
+                        state.write(text.as_bytes());
+                    }
                     None => {
                         println!("{:?}", event.logical_key)
                     }
-                }
+                };
             }
             _ => (),
         }

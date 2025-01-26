@@ -4,10 +4,10 @@ pub mod context;
 use std::cmp;
 use std::sync::Arc;
 
-use saiga_backend::{event::EventListener};
-use winit::window::Window;
+use saiga_backend::event::EventListener;
 use saiga_backend::grid::Dimensions as TermDimensions;
-use saiga_backend::term::{MIN_COLUMNS, MIN_SCREEN_LINES, Term};
+use saiga_backend::term::{Term, MIN_COLUMNS, MIN_SCREEN_LINES};
+use winit::window::Window;
 
 #[derive(Debug)]
 pub struct Display<'a> {

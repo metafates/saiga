@@ -1,8 +1,8 @@
+use bitflags::bitflags;
 use std::fmt;
 use std::fmt::{Display, Formatter};
 use std::ops::{Add, Mul, Sub};
 use std::str::FromStr;
-use bitflags::bitflags;
 
 /// Terminal character attributes.
 #[derive(Debug, Eq, PartialEq)]
@@ -95,6 +95,12 @@ pub enum NamedMode {
     LineFeedNewLine = 20,
 }
 
+impl From<NamedMode> for Mode {
+    fn from(mode: NamedMode) -> Self {
+        Self::Named(mode)
+    }
+}
+
 /// Wrapper for the private DEC modes.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum PrivateMode {
@@ -169,6 +175,12 @@ pub enum NamedPrivateMode {
     BracketedPaste = 2004,
     /// The mode is handled automatically by [`Processor`].
     SyncUpdate = 2026,
+}
+
+impl From<NamedPrivateMode> for PrivateMode {
+    fn from(mode: NamedPrivateMode) -> Self {
+        Self::Named(mode)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -265,7 +277,6 @@ pub struct CursorStyle {
     pub shape: CursorShape,
     pub blinking: bool,
 }
-
 
 /// Terminal cursor shape.
 #[derive(Debug, Default, Eq, PartialEq, Copy, Clone, Hash)]
@@ -854,4 +865,3 @@ pub trait Handler {
     /// The output is of form `CSI > 4 ; mode m`.
     fn report_modify_other_keys(&mut self) {}
 }
-
