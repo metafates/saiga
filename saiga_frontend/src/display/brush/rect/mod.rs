@@ -236,12 +236,12 @@ impl Brush {
 
     pub fn resize(&mut self, ctx: &mut context::Context) {
         let transform: [f32; 16] =
-            math::orthographic_projection(ctx.width as f32, ctx.height as f32);
+            math::orthographic_projection(ctx.size.width as f32, ctx.size.height as f32);
 
         let queue = &mut ctx.queue;
 
         if transform != self.current_transform {
-            let uniform = Uniform::new(transform, ctx.scale_factor as f32);
+            let uniform = Uniform::new(transform, ctx.size.scale_factor as f32);
 
             queue.write_buffer(&self.uniform_buf, 0, bytemuck::bytes_of(&uniform));
 

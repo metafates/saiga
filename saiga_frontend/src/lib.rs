@@ -1,4 +1,5 @@
 mod display;
+pub mod settings;
 
 use pollster::FutureExt as _;
 
@@ -9,16 +10,15 @@ use std::{
 };
 
 use display::Display;
-use log::{debug, error, warn};
+use log::{error, warn};
 use saiga_backend::term::Config;
 use saiga_backend::{event::Event as TerminalEvent, pty::Pty, term::Term};
 use saiga_vte::ansi::processor::Processor;
 use winit::{
     application::ApplicationHandler,
     dpi::PhysicalSize,
-    event::{ElementState, KeyEvent, WindowEvent},
+    event::{ElementState, WindowEvent},
     event_loop::{ControlFlow, EventLoop, EventLoopProxy},
-    keyboard::PhysicalKey,
     window::{Window, WindowId},
 };
 
@@ -79,7 +79,7 @@ impl State<'_> {
 
         let terminal = Term::new(
             Config::default(),
-            &display.size_info,
+            &display.context.size,
             TerminalEventListener::new(window_id, event_loop_proxy),
         );
 
@@ -92,13 +92,14 @@ impl State<'_> {
 
     fn set_scale_factor(&mut self, scale_factor: f64) {
         self.display.set_scale_factor(scale_factor);
-        self.display.window.request_redraw();
+
+        self.request_redraw();
     }
 
     fn set_size(&mut self, size: PhysicalSize<u32>) {
         // TODO: compute this properly
-        self.terminal.resize(self.display.size_info);
         self.display.set_size(size.width, size.height);
+        self.terminal.resize(self.display.context.size);
 
         self.request_redraw();
     }

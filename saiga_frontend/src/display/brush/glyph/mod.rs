@@ -3,14 +3,14 @@ use glyphon::{
     Attrs, Buffer, Cache, Color, Family, FontSystem, Metrics, Resolution, Shaping, SwashCache,
     TextArea, TextAtlas, TextBounds, TextRenderer, Viewport,
 };
-use saiga_backend::{event::EventListener, grid, term::Term};
-use std::fmt::Debug;
 use log::warn;
-use wgpu::{MultisampleState, TextureFormat};
 use saiga_backend::index::Point;
 use saiga_backend::term::cell::ResetDiscriminant;
+use saiga_backend::{event::EventListener, grid, term::Term};
 use saiga_vte::ansi::handler;
 use saiga_vte::ansi::handler::Rgb;
+use std::fmt::Debug;
+use wgpu::{MultisampleState, TextureFormat};
 
 const FONT_SIZE: u32 = 16;
 
@@ -65,8 +65,8 @@ impl Brush {
         self.viewport.update(
             &ctx.queue,
             Resolution {
-                width: ctx.width,
-                height: ctx.height,
+                width: ctx.size.width as u32,
+                height: ctx.size.height as u32,
             },
         );
 
@@ -88,7 +88,8 @@ impl Brush {
                 handler::Color::Named(named) => colors[named],
                 handler::Color::Indexed(index) => colors[index as usize],
                 handler::Color::Spec(rgb) => Some(rgb),
-            }.unwrap_or(Rgb::new(255, 255, 255));
+            }
+            .unwrap_or(Rgb::new(255, 255, 255));
 
             buffers.push((buffer, cell.point, Color::rgb(fg.r, fg.g, fg.b)));
         }
@@ -100,7 +101,7 @@ impl Brush {
                 buffer: buf,
                 left: pos.column.0 as f32 * 30.0,
                 top: pos.line.0 as f32 * 30.0,
-                scale: ctx.scale_factor as f32,
+                scale: ctx.size.scale_factor as f32,
                 bounds: TextBounds {
                     left: (pos.column.0 * 30) as i32,
                     top: pos.line.0 * 30,

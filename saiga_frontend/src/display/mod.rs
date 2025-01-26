@@ -12,35 +12,21 @@ use winit::window::Window;
 #[derive(Debug)]
 pub struct Display<'a> {
     pub window: Arc<Window>,
-    pub size_info: SizeInfo,
-
-    context: context::Context<'a>,
+    pub context: context::Context<'a>,
     brushes: brush::Brushes,
 }
 
 impl Display<'_> {
     pub async fn new(window: Window) -> Self {
         let window = Arc::new(window);
+
         let context = context::Context::new(window.clone()).await;
         let brushes = brush::Brushes::new(&context);
-
-        let viewport_size = window.inner_size();
-
-        let size_info = SizeInfo::new(
-            viewport_size.width as f32,
-            viewport_size.height as f32,
-            30.0,
-            30.0,
-            0.0,
-            0.0,
-            false,
-        );
 
         Self {
             context,
             window,
             brushes,
-            size_info,
         }
     }
 
@@ -106,7 +92,7 @@ impl Display<'_> {
 }
 
 /// Terminal size info.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct SizeInfo<T = f32> {
     /// Terminal window width.
     width: T,
@@ -131,6 +117,8 @@ pub struct SizeInfo<T = f32> {
 
     /// Number of columns in the viewport.
     columns: usize,
+
+    scale_factor: f64,
 }
 
 impl From<SizeInfo<f32>> for SizeInfo<u32> {
@@ -144,6 +132,7 @@ impl From<SizeInfo<f32>> for SizeInfo<u32> {
             padding_y: size_info.padding_y as u32,
             screen_lines: size_info.screen_lines,
             columns: size_info.screen_lines,
+            scale_factor: size_info.scale_factor,
         }
     }
 }
@@ -196,6 +185,7 @@ impl SizeInfo<f32> {
     pub fn new(
         width: f32,
         height: f32,
+        scale_factor: f64,
         cell_width: f32,
         cell_height: f32,
         mut padding_x: f32,
@@ -215,6 +205,7 @@ impl SizeInfo<f32> {
 
         SizeInfo {
             width,
+            scale_factor,
             height,
             cell_width,
             cell_height,

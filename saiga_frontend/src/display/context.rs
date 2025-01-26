@@ -2,6 +2,8 @@ use std::{fmt::Debug, sync::Arc};
 
 use winit::window::Window;
 
+use super::SizeInfo;
+
 const USE_WEB_COLORS: bool = false;
 
 #[derive(Debug)]
@@ -13,14 +15,12 @@ pub struct Context<'a> {
     pub alpha_mode: wgpu::CompositeAlphaMode,
     pub color_mode: glyphon::ColorMode,
 
-    pub width: u32,
-    pub height: u32,
-    pub scale_factor: f64,
+    pub size: SizeInfo,
 }
 
 impl Context<'_> {
     pub async fn new<'a>(window: Arc<Window>) -> Context<'a> {
-        let size = window.inner_size();
+        let window_size = window.inner_size();
         let backends = wgpu::util::backend_bits_from_env().unwrap_or(wgpu::Backends::all());
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -52,6 +52,17 @@ impl Context<'_> {
 
         let alpha_mode = wgpu::CompositeAlphaMode::default();
 
+        let size_info = SizeInfo::new(
+            window_size.width as f32,
+            window_size.height as f32,
+            window.scale_factor(),
+            30.0,
+            30.0,
+            0.0,
+            0.0,
+            false,
+        );
+
         let mut ctx = Context {
             device,
             surface,
@@ -59,25 +70,23 @@ impl Context<'_> {
             alpha_mode,
             format,
             color_mode,
-            width: size.width,
-            height: size.height,
-            scale_factor: window.scale_factor(),
+            size: size_info,
         };
 
-        ctx.set_size(size.width, size.height);
+        ctx.set_size(window_size.width, window_size.height);
 
         ctx
     }
 
     pub fn set_size(&mut self, width: u32, height: u32) {
-        self.width = width;
-        self.height = height;
+        self.size.width = width as f32;
+        self.size.height = height as f32;
 
         self.configure_surface();
     }
 
     pub fn set_scale_factor(&mut self, scale_factor: f64) {
-        self.scale_factor = scale_factor;
+        self.size.scale_factor = scale_factor;
 
         self.configure_surface();
     }
@@ -88,8 +97,8 @@ impl Context<'_> {
             &wgpu::SurfaceConfiguration {
                 usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
                 format: self.format,
-                width: self.width,
-                height: self.height,
+                width: self.size.width as u32,
+                height: self.size.height as u32,
                 view_formats: vec![],
                 alpha_mode: self.alpha_mode,
                 present_mode: wgpu::PresentMode::Fifo,
