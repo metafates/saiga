@@ -1,5 +1,5 @@
-use saiga_backend::{event::EventListener, term::Term};
 use saiga_backend::grid::Dimensions;
+use saiga_backend::{event::EventListener, term::Term};
 use saiga_vte::ansi::handler;
 use saiga_vte::ansi::handler::Rgb;
 
@@ -34,9 +34,6 @@ impl Brushes {
         rpass: &mut wgpu::RenderPass,
         terminal: &mut Term<E>,
     ) {
-        // TODO: make this value non-hardcoded
-        const SIZE: f32 = 30.0;
-
         let grid = terminal.grid();
 
         let mut rects: Vec<rect::Rect> = Vec::with_capacity(grid.columns() * grid.screen_lines());
@@ -48,16 +45,16 @@ impl Brushes {
                 handler::Color::Named(named) => colors[named],
                 handler::Color::Indexed(index) => colors[index as usize],
                 handler::Color::Spec(rgb) => Some(rgb),
-            }.unwrap_or(Rgb::new(0, 0, 0));
-
+            }
+            .unwrap_or(Rgb::new(0, 0, 0));
 
             rects.push(rect::Rect {
                 position: [
-                    c.point.column.0 as f32 * (SIZE / 2.0),
-                    c.point.line.0 as f32 * SIZE,
+                    c.point.column.0 as f32 * ctx.size.width,
+                    c.point.line.0 as f32 * ctx.size.height,
                 ],
                 color: rgb_to_wgpu_color(bg),
-                size: [SIZE, SIZE],
+                size: [ctx.size.width, ctx.size.height],
             })
         }
 

@@ -144,6 +144,15 @@ impl State<'_> {
     fn request_redraw(&self) {
         self.display.window.request_redraw();
     }
+
+    fn has_changes(&mut self) -> bool {
+        match self.terminal.damage() {
+            saiga_backend::term::TermDamage::Full => true,
+            saiga_backend::term::TermDamage::Partial(term_damage_iterator) => {
+                term_damage_iterator.peekable().peek().is_some()
+            }
+        }
+    }
 }
 
 struct Application<'a> {
@@ -211,7 +220,9 @@ impl ApplicationHandler<ScopedEvent> for Application<'_> {
             return;
         };
 
-        if state.advance(&mut self.processor) {
+        state.advance(&mut self.processor);
+
+        if state.has_changes() {
             state.request_redraw();
         }
 
