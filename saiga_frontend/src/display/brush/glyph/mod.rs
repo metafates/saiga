@@ -4,8 +4,8 @@ use glyphon::{
     TextArea, TextAtlas, TextBounds, TextRenderer, Viewport,
 };
 use log::warn;
-use saiga_backend::grid::Indexed;
-use saiga_backend::index::Point;
+use saiga_backend::grid::{Dimensions, Indexed};
+use saiga_backend::index::{Line, Point};
 use saiga_backend::term::cell::{Cell, ResetDiscriminant};
 use saiga_backend::{event::EventListener, grid, term::Term};
 use saiga_vte::ansi::handler;
@@ -65,100 +65,68 @@ impl Brush {
         rpass: &mut wgpu::RenderPass,
         terminal: &mut Term<E>,
     ) {
-        let lines = terminal.grid().display_iter().fold(
-            Vec::<Vec<Indexed<&Cell>>>::new(),
-            |mut lines, cell| match lines.last_mut() {
-                Some(line) => {
-                    if line.last().unwrap_or(&cell).point.line == cell.point.line {
-                        line.push(cell);
-                    } else {
-                        lines.push(vec![cell]);
-                    }
+        let colors = terminal.colors();
 
-                    lines
+        let spans = terminal.grid().display_iter().fold(
+            Vec::<(String, Attrs, Line)>::new(),
+            |mut spans, cell| {
+                let mut attrs = Attrs::new();
+
+                if let Some((prev_str, _, prev_line)) = spans.last() {
+                    if prev_str != "\n" && *prev_line != cell.point.line {
+                        spans.push(("\n".to_string(), attrs, *prev_line));
+                    }
                 }
-                None => vec![vec![cell]],
+
+                let color = match cell.fg {
+                    handler::Color::Named(named_color) => colors[named_color],
+                    handler::Color::Spec(rgb) => Some(rgb),
+                    handler::Color::Indexed(index) => colors[index as usize],
+                };
+
+                if let Some(color) = color {
+                    attrs = attrs.color(Color::rgb(color.r, color.g, color.b))
+                }
+
+                spans.push((cell.c.to_string(), attrs, cell.point.line));
+
+                spans
             },
         );
 
-        let buffers: Vec<(Buffer, Point)> = lines
-            .into_iter()
-            .map(|line| {
-                line.into_iter()
-                    .fold((String::new(), Point::default()), |acc, cell| {
-                        (acc.0 + cell.c.to_string().as_str(), cell.point)
-                    })
-            })
-            .map(|(line, pos)| {
-                let mut buffer =
-                    Buffer::new(&mut self.font_system, Metrics::relative(FONT_SIZE, 1.3));
+        let mut buffer = Buffer::new(&mut self.font_system, Metrics::relative(FONT_SIZE, 1.3));
 
-                buffer.set_size(
-                    &mut self.font_system,
-                    Some(ctx.size.cell_width * pos.column.0 as f32),
-                    Some(ctx.size.cell_height),
-                );
+        let columns = terminal.grid().columns();
+        let lines = terminal.grid().screen_lines();
 
-                buffer.set_text(
-                    &mut self.font_system,
-                    &line,
-                    Attrs::new().family(Family::Name("JetBrainsMono Nerd Font")),
-                    Shaping::Advanced,
-                );
+        let width = columns as f32 * ctx.size.cell_width;
+        let height = lines as f32 * ctx.size.cell_height;
 
-                (buffer, pos)
-            })
-            .collect();
+        buffer.set_size(&mut self.font_system, Some(width), Some(height));
 
-        //let buffers: Vec<(Buffer, Point, Color)> = terminal
-        //    .grid()
-        //    .display_iter()
-        //    .map(|cell| {
-        //        let mut buffer =
-        //            Buffer::new(&mut self.font_system, Metrics::relative(FONT_SIZE, 1.3));
-        //
-        //        buffer.set_size(
-        //            &mut self.font_system,
-        //            Some(ctx.size.cell_width),
-        //            Some(ctx.size.cell_height),
-        //        );
-        //
-        //        buffer.set_text(
-        //            &mut self.font_system,
-        //            cell.c.to_string().as_str(),
-        //            Attrs::new().family(Family::Name("JetBrainsMono Nerd Font")),
-        //            Shaping::Advanced,
-        //        );
-        //
-        //        let colors = terminal.colors();
-        //        let fg = match cell.fg {
-        //            handler::Color::Named(named) => colors[named],
-        //            handler::Color::Indexed(index) => colors[index as usize],
-        //            handler::Color::Spec(rgb) => Some(rgb),
-        //        }
-        //        .unwrap_or(Rgb::new(255, 255, 255));
-        //
-        //        (buffer, cell.point, Color::rgb(fg.r, fg.g, fg.b))
-        //    })
-        //    .collect();
+        buffer.set_rich_text(
+            &mut self.font_system,
+            spans
+                .iter()
+                .map(|(string, attrs, _)| (string.as_str(), attrs.clone())),
+            Attrs::new().family(Family::Name("JetBrainsMono Nerd Font Mono")),
+            Shaping::Advanced,
+        );
 
-        let text_areas: Vec<TextArea> = buffers
-            .iter()
-            .map(|(buf, pos)| TextArea {
-                buffer: buf,
-                left: 0.0,
-                top: pos.line.0 as f32 * ctx.size.cell_height,
-                scale: ctx.size.scale_factor as f32,
-                bounds: TextBounds {
-                    left: 0,
-                    top: pos.line.0 * ctx.size.cell_height as i32,
-                    right: ((pos.column.0 + 1) * ctx.size.cell_width as usize) as i32,
-                    bottom: (pos.line.0 + 2) * ctx.size.cell_height as i32,
-                },
-                default_color: Color::rgb(255, 255, 255),
-                custom_glyphs: &[],
-            })
-            .collect();
+        let text_area = TextArea {
+            buffer: &buffer,
+            left: 0.0,
+            top: 0.0,
+            scale: ctx.size.scale_factor as f32,
+            bounds: TextBounds {
+                left: 0,
+                top: 0,
+                right: width as i32,
+                bottom: height as i32,
+            },
+            default_color: Color::rgb(255, 255, 255),
+            custom_glyphs: &[],
+        };
 
         self.text_renderer
             .prepare(
@@ -167,7 +135,7 @@ impl Brush {
                 &mut self.font_system,
                 &mut self.atlas,
                 &self.viewport,
-                text_areas,
+                [text_area],
                 &mut self.swash_cache,
             )
             .unwrap();
