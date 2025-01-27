@@ -70,7 +70,7 @@ impl Brush {
         let spans = terminal.grid().display_iter().fold(
             Vec::<(String, Attrs, Line)>::new(),
             |mut spans, cell| {
-                let mut attrs = Attrs::new();
+                let mut attrs = Attrs::new().family(Family::Name("JetBrainsMono Nerd Font Mono"));
 
                 if let Some((prev_str, _, prev_line)) = spans.last() {
                     if prev_str != "\n" && *prev_line != cell.point.line {

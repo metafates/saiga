@@ -5,7 +5,13 @@ use std::{
 };
 
 pub use nix::Result;
-use nix::{pty::ForkptyResult, unistd::Pid};
+use nix::{
+    libc::{ioctl, TIOCSWINSZ},
+    pty::{ForkptyResult, Winsize},
+    unistd::Pid,
+};
+
+use crate::event::{ToWinsize, WindowSize};
 
 pub struct Pty {
     master: OwnedFd,
@@ -55,6 +61,17 @@ impl Pty {
         };
 
         Ok(pty)
+    }
+
+    pub fn resize(&mut self, size: WindowSize) {
+        // TODO: make it better
+        let win = size.to_winsize();
+
+        let res = unsafe { ioctl(self.master.as_raw_fd(), TIOCSWINSZ, &win as *const _) };
+
+        if res < 0 {
+            panic!("ioctl TIOCSWINSZ failed");
+        }
     }
 }
 

@@ -4,7 +4,7 @@ pub mod context;
 use std::cmp;
 use std::sync::Arc;
 
-use saiga_backend::event::EventListener;
+use saiga_backend::event::{EventListener, WindowSize};
 use saiga_backend::grid::Dimensions as TermDimensions;
 use saiga_backend::term::{Term, MIN_COLUMNS, MIN_SCREEN_LINES};
 use winit::window::Window;
@@ -137,16 +137,16 @@ impl From<SizeInfo<f32>> for SizeInfo<u32> {
     }
 }
 
-// impl From<SizeInfo<f32>> for WindowSize {
-//     fn from(size_info: SizeInfo<f32>) -> Self {
-//         Self {
-//             num_cols: size_info.columns() as u16,
-//             num_lines: size_info.screen_lines() as u16,
-//             cell_width: size_info.cell_width() as u16,
-//             cell_height: size_info.cell_height() as u16,
-//         }
-//     }
-// }
+impl From<SizeInfo<f32>> for WindowSize {
+    fn from(size_info: SizeInfo<f32>) -> Self {
+        Self {
+            num_cols: size_info.columns() as u16,
+            num_lines: size_info.screen_lines() as u16,
+            cell_width: size_info.cell_width() as u16,
+            cell_height: size_info.cell_height() as u16,
+        }
+    }
+}
 
 impl<T: Clone + Copy> SizeInfo<T> {
     #[inline]

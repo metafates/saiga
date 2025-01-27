@@ -100,6 +100,7 @@ impl State<'_> {
         // TODO: compute this properly
         self.display.set_size(size.width, size.height);
         self.terminal.resize(self.display.context.size);
+        self.pty.resize(self.display.context.size.into());
 
         self.request_redraw();
     }

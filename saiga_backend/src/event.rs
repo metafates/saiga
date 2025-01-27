@@ -3,6 +3,7 @@ use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
 
 use crate::term::ClipboardType;
+use nix::pty::Winsize;
 use saiga_vte::ansi::handler::Rgb;
 
 /// Terminal event.
@@ -27,7 +28,10 @@ pub enum Event {
     ///
     /// The attached function is a formatter which will correctly transform the clipboard content
     /// into the expected escape sequence format.
-    ClipboardLoad(ClipboardType, Arc<dyn Fn(&str) -> String + Sync + Send + 'static>),
+    ClipboardLoad(
+        ClipboardType,
+        Arc<dyn Fn(&str) -> String + Sync + Send + 'static>,
+    ),
 
     /// Request to write the RGB value of a color to the PTY.
     ///
@@ -91,6 +95,29 @@ pub struct WindowSize {
     pub num_cols: u16,
     pub cell_width: u16,
     pub cell_height: u16,
+}
+
+/// Types that can produce a `Winsize`.
+pub trait ToWinsize {
+    /// Get a `Winsize`.
+    fn to_winsize(self) -> Winsize;
+}
+
+impl ToWinsize for WindowSize {
+    fn to_winsize(self) -> Winsize {
+        let ws_row = self.num_lines;
+        let ws_col = self.num_cols;
+
+        let ws_xpixel = ws_col * self.cell_width;
+        let ws_ypixel = ws_row * self.cell_height;
+
+        Winsize {
+            ws_row,
+            ws_col,
+            ws_xpixel,
+            ws_ypixel,
+        }
+    }
 }
 
 /// Types that are interested in when the display is resized.
