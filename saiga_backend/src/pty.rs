@@ -43,8 +43,8 @@ impl io::Write for Pty {
 }
 
 impl Pty {
-    pub fn try_new() -> Result<Pty> {
-        let result = unsafe { nix::pty::forkpty(None, None)? };
+    pub fn try_new(size: Option<WindowSize>) -> Result<Pty> {
+        let result = unsafe { nix::pty::forkpty(size.map(|s| s.to_winsize()).as_ref(), None)? };
 
         let pty = match result {
             ForkptyResult::Parent { child, master } => {

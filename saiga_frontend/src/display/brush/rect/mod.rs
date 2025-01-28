@@ -235,8 +235,7 @@ impl Brush {
     }
 
     pub fn resize(&mut self, ctx: &mut context::Context) {
-        let transform: [f32; 16] =
-            math::orthographic_projection(ctx.size.width as f32, ctx.size.height as f32);
+        let transform = math::orthographic_projection(ctx.size.width, ctx.size.height);
 
         let queue = &mut ctx.queue;
 

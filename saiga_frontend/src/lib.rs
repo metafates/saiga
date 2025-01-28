@@ -71,11 +71,7 @@ impl State<'_> {
     async fn new(window: Window, event_loop_proxy: EventLoopProxy<ScopedEvent>) -> Self {
         let window_id = window.id();
         let display = Display::new(window).await;
-        let pty = Pty::try_new().unwrap();
-        // let terminal = Term::new(
-        //     Dimensions::default(),
-        //     TerminalEventListener::new(window_id, event_loop_proxy),
-        // );
+        let pty = Pty::try_new(Some(display.context.size.into())).unwrap();
 
         let terminal = Term::new(
             Config::default(),
@@ -96,9 +92,9 @@ impl State<'_> {
         self.request_redraw();
     }
 
-    fn set_size(&mut self, size: PhysicalSize<u32>) {
-        // TODO: compute this properly
+    fn resize(&mut self, size: PhysicalSize<u32>) {
         self.display.set_size(size.width, size.height);
+
         self.terminal.resize(self.display.context.size);
         self.pty.resize(self.display.context.size.into());
 
@@ -196,7 +192,7 @@ impl ApplicationHandler<ScopedEvent> for Application<'_> {
         match &event {
             Event::Terminal(event) => match event {
                 TerminalEvent::Title(title) => {
-                    state.display.window.set_title(&title);
+                    state.display.window.set_title(title);
                 }
                 TerminalEvent::PtyWrite(payload) => {
                     state.write(payload.as_bytes());
@@ -232,7 +228,7 @@ impl ApplicationHandler<ScopedEvent> for Application<'_> {
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 state.set_scale_factor(scale_factor)
             }
-            WindowEvent::Resized(size) => state.set_size(size),
+            WindowEvent::Resized(size) => state.resize(size),
             WindowEvent::RedrawRequested => state.draw(),
             WindowEvent::KeyboardInput { event, .. } if event.state == ElementState::Pressed => {
                 match event.text {

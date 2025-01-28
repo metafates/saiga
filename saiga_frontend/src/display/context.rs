@@ -1,5 +1,6 @@
 use std::{fmt::Debug, sync::Arc};
 
+use saiga_backend::grid::Dimensions;
 use winit::window::Window;
 
 use super::SizeInfo;
@@ -57,7 +58,7 @@ impl Context<'_> {
             window_size.height as f32,
             window.scale_factor(),
             20.0,
-            30.0,
+            45.0,
             0.0,
             0.0,
             false,
@@ -79,8 +80,16 @@ impl Context<'_> {
     }
 
     pub fn set_size(&mut self, width: u32, height: u32) {
-        self.size.width = width as f32;
-        self.size.height = height as f32;
+        self.size = SizeInfo::new(
+            width as f32,
+            height as f32,
+            self.size.scale_factor,
+            self.size.cell_width,
+            self.size.cell_height,
+            self.size.padding_x,
+            self.size.padding_y,
+            false,
+        );
 
         self.configure_surface();
     }

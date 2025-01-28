@@ -48,13 +48,21 @@ impl Brushes {
             }
             .unwrap_or(Rgb::new(0, 0, 0));
 
+            let is_cursor = grid.cursor.point == c.point;
+
+            let color = if is_cursor {
+                Rgb::new(253, 61, 181)
+            } else {
+                bg
+            };
+
             rects.push(rect::Rect {
                 position: [
-                    c.point.column.0 as f32 * ctx.size.width,
-                    c.point.line.0 as f32 * ctx.size.height,
+                    c.point.column.0 as f32 * ctx.size.cell_width / ctx.size.scale_factor as f32,
+                    c.point.line.0 as f32 * ctx.size.cell_height / ctx.size.scale_factor as f32,
                 ],
-                color: rgb_to_wgpu_color(bg),
-                size: [ctx.size.width, ctx.size.height],
+                color: rgb_to_wgpu_color(color),
+                size: [ctx.size.cell_width, ctx.size.cell_height],
             })
         }
 

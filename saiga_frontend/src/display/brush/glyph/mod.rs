@@ -94,7 +94,7 @@ impl Brush {
             },
         );
 
-        let mut buffer = Buffer::new(&mut self.font_system, Metrics::relative(FONT_SIZE, 1.3));
+        let mut buffer = Buffer::new(&mut self.font_system, Metrics::relative(FONT_SIZE, 1.4));
 
         let columns = terminal.grid().columns();
         let lines = terminal.grid().screen_lines();
@@ -108,7 +108,7 @@ impl Brush {
             &mut self.font_system,
             spans
                 .iter()
-                .map(|(string, attrs, _)| (string.as_str(), attrs.clone())),
+                .map(|(string, attrs, _)| (string.as_str(), *attrs)),
             Attrs::new().family(Family::Name("JetBrainsMono Nerd Font Mono")),
             Shaping::Advanced,
         );
