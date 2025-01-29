@@ -289,8 +289,6 @@ where
                                     // On Linux, a `read` on the master side of a PTY can fail
                                     // with `EIO` if the client side hangs up.  In that case,
                                     // just loop back round for the inevitable `Exited` event.
-                                    // This sucks, but checking the process is either racy or
-                                    // blocking.
                                     #[cfg(target_os = "linux")]
                                     if err.raw_os_error() == Some(libc::EIO) {
                                         continue;
@@ -347,7 +345,7 @@ impl event::Notify for Notifier {
     {
         let bytes = bytes.into();
         // Terminal hangs if we send 0 bytes through.
-        if bytes.len() == 0 {
+        if bytes.is_empty() {
             return;
         }
 

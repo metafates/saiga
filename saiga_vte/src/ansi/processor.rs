@@ -1,4 +1,7 @@
-use std::iter;
+use std::{
+    iter,
+    time::{Duration, Instant},
+};
 
 use log::debug;
 
@@ -15,36 +18,198 @@ use crate::{
 };
 use crate::{param, utf8, Executor, MAX_INTERMEDIATES};
 
+/// Maximum time before a synchronized update is aborted.
+const SYNC_UPDATE_TIMEOUT: Duration = Duration::from_millis(150);
+
+/// Maximum number of bytes read in one synchronized update (2MiB).
+const SYNC_BUFFER_SIZE: usize = 0x20_0000;
+
+/// Number of bytes in the BSU/ESU CSI sequences.
+const SYNC_ESCAPE_LEN: usize = 8;
+
+/// BSU CSI sequence for beginning or extending synchronized updates.
+const BSU_CSI: [u8; SYNC_ESCAPE_LEN] = *b"\x1b[?2026h";
+
+/// ESU CSI sequence for terminating synchronized updates.
+const ESU_CSI: [u8; SYNC_ESCAPE_LEN] = *b"\x1b[?2026l";
+
+/// Interface for creating timeouts and checking their expiry.
+///
+/// This is internally used by the [`Processor`] to handle synchronized
+/// updates.
+pub trait Timeout: Default {
+    /// Sets the timeout for the next synchronized update.
+    ///
+    /// The `duration` parameter specifies the duration of the timeout. Once the
+    /// specified duration has elapsed, the synchronized update rotuine can be
+    /// performed.
+    fn set_timeout(&mut self, duration: Duration);
+    /// Clear the current timeout.
+    fn clear_timeout(&mut self);
+    /// Returns whether a timeout is currently active and has not yet expired.
+    fn pending_timeout(&self) -> bool;
+}
+
 #[derive(Default)]
-pub struct Processor {
+pub struct StdSyncHandler {
+    timeout: Option<Instant>,
+}
+
+impl StdSyncHandler {
+    /// Synchronized update expiration time.
+    #[inline]
+    pub fn sync_timeout(&self) -> Option<Instant> {
+        self.timeout
+    }
+}
+
+impl Timeout for StdSyncHandler {
+    #[inline]
+    fn set_timeout(&mut self, duration: Duration) {
+        self.timeout = Some(Instant::now() + duration);
+    }
+
+    #[inline]
+    fn clear_timeout(&mut self) {
+        self.timeout = None;
+    }
+
+    #[inline]
+    fn pending_timeout(&self) -> bool {
+        self.timeout.is_some()
+    }
+}
+
+/// Internal state for VTE processor.
+#[derive(Debug, Default)]
+struct ProcessorState<T: Timeout> {
+    /// Last processed character for repetition.
+    preceding_char: Option<char>,
+
+    /// State for synchronized terminal updates.
+    sync_state: SyncState<T>,
+}
+
+#[derive(Debug)]
+struct SyncState<T: Timeout> {
+    /// Handler for synchronized updates.
+    timeout: T,
+
+    /// Bytes read during the synchronized update.
+    buffer: Vec<u8>,
+}
+
+impl<T: Timeout> Default for SyncState<T> {
+    fn default() -> Self {
+        Self {
+            buffer: Vec::with_capacity(SYNC_BUFFER_SIZE),
+            timeout: T::default(),
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct Processor<T: Timeout = StdSyncHandler> {
+    state: ProcessorState<T>,
     parser: crate::Parser,
 }
 
-impl Processor {
+impl<T: Timeout> Processor<T> {
     pub fn new() -> Self {
         Default::default()
     }
 
-    pub fn advance<H: Handler>(&mut self, handler: &mut H, bytes: &[u8]) {
-        let mut executor = HandlerExecutor::new(handler);
+    /// Synchronized update timeout.
+    pub fn sync_timeout(&self) -> &T {
+        &self.state.sync_state.timeout
+    }
 
-        self.parser.advance(&mut executor, bytes);
+    pub fn advance<H: Handler>(&mut self, handler: &mut H, bytes: &[u8]) {
+        if self.state.sync_state.timeout.pending_timeout() {
+            self.advance_sync(handler, bytes);
+        } else {
+            let mut executor = HandlerExecutor::new(&mut self.state, handler);
+
+            self.parser.advance(&mut executor, bytes);
+        }
+    }
+
+    /// End a synchronized update.
+    pub fn stop_sync<H>(&mut self, handler: &mut H)
+    where
+        H: Handler,
+    {
+        // Process all synchronized bytes.
+        let bytes = self.state.sync_state.buffer.clone(); // TODO: avoid clone?
+        let mut performer = HandlerExecutor::new(&mut self.state, handler);
+        self.parser.advance(&mut performer, bytes.as_slice());
+
+        // Report that update ended, since we could end due to timeout.
+        handler.unset_private_mode(NamedPrivateMode::SyncUpdate.into());
+        // Resetting state after processing makes sure we don't interpret buffered sync escapes.
+        self.state.sync_state.buffer.clear();
+        self.state.sync_state.timeout.clear_timeout();
+    }
+
+    /// Number of bytes in the synchronization buffer.
+    #[inline]
+    pub fn sync_bytes_count(&self) -> usize {
+        self.state.sync_state.buffer.len()
+    }
+
+    /// Process a new byte during a synchronized update.
+    #[cold]
+    fn advance_sync<H>(&mut self, handler: &mut H, bytes: &[u8])
+    where
+        H: Handler,
+    {
+        self.state.sync_state.buffer.extend_from_slice(bytes);
+
+        // Handle sync CSI escape sequences.
+        self.advance_sync_csi(handler);
+    }
+
+    /// Handle BSU/ESU CSI sequences during synchronized update.
+    fn advance_sync_csi<H>(&mut self, handler: &mut H)
+    where
+        H: Handler,
+    {
+        // Get the last few bytes for comparison.
+        let len = self.state.sync_state.buffer.len();
+        let offset = len.saturating_sub(SYNC_ESCAPE_LEN);
+        let end = &self.state.sync_state.buffer[offset..];
+
+        // NOTE: It is technically legal to specify multiple private modes in the same
+        // escape, but we only allow EXACTLY `\e[?2026h`/`\e[?2026l` to keep the parser
+        // reasonable.
+        //
+        // Check for extension/termination of the synchronized update.
+        if end == BSU_CSI {
+            self.state
+                .sync_state
+                .timeout
+                .set_timeout(SYNC_UPDATE_TIMEOUT);
+        } else if end == ESU_CSI || len >= SYNC_BUFFER_SIZE - 1 {
+            self.stop_sync(handler);
+        }
     }
 }
 
-struct HandlerExecutor<'a, H: Handler> {
+struct HandlerExecutor<'a, H: Handler, T: Timeout> {
+    state: &'a mut ProcessorState<T>,
     handler: &'a mut H,
 }
 
-impl<'a, H: Handler + 'a> HandlerExecutor<'a, H> {
-    fn new<'b>(handler: &'b mut H) -> HandlerExecutor<'b, H> {
-        HandlerExecutor { handler }
+impl<'a, H: Handler + 'a, T: Timeout> HandlerExecutor<'a, H, T> {
+    fn new<'b>(state: &'b mut ProcessorState<T>, handler: &'b mut H) -> HandlerExecutor<'b, H, T> {
+        HandlerExecutor { state, handler }
     }
 }
 
-impl<'a, H: Handler> Executor for HandlerExecutor<'a, H> {
+impl<H: Handler, T: Timeout> Executor for HandlerExecutor<'_, H, T> {
     fn print(&mut self, c: char) {
         self.handler.input(c);
+        self.state.preceding_char = Some(c)
     }
 
     fn execute(&mut self, byte: u8) {
@@ -120,13 +285,13 @@ impl<'a, H: Handler> Executor for HandlerExecutor<'a, H> {
                 self.handler.set_hyperlink(Some(Hyperlink { id, uri }));
             }
 
-            // Set or query default foreground color.
+            // TODO: Set or query default foreground color.
             [b"10", param] => {}
 
-            // Set or query default background color.
+            // TODO: Set or query default background color.
             [b"11", param] => {}
 
-            // Set or query default cursor color.
+            // TODO: Set or query default cursor color.
             [b"12", param] => {}
 
             // TODO: cursor shape and style
@@ -219,7 +384,8 @@ impl<'a, H: Handler> Executor for HandlerExecutor<'a, H> {
             return;
         }
 
-        let mut params_iter = params.as_slice().into_iter();
+        let handler = &mut self.handler;
+        let mut params_iter = params.as_slice().iter();
         let mut next_param_or = |default: u16| match params_iter.next() {
             Some(param) => match param.as_slice().first() {
                 Some(subparam) if *subparam != 0 => *subparam,
@@ -232,8 +398,19 @@ impl<'a, H: Handler> Executor for HandlerExecutor<'a, H> {
             ('@', []) => self.handler.insert_blank(next_param_or(1).into()),
             ('A', []) => self.handler.move_up(next_param_or(1).into()),
             ('B' | 'e', []) => self.handler.move_down(next_param_or(1).into()),
+            ('b', []) => {
+                if let Some(c) = self.state.preceding_char {
+                    for _ in 0..next_param_or(1) {
+                        handler.input(c);
+                    }
+                } else {
+                    debug!("tried to repeat with no preceding char");
+                }
+            }
             ('C' | 'a', []) => self.handler.move_forward(next_param_or(1).into()),
-            ('c', _) => self.handler.identify_terminal(None), // TODO: pass intermediates?
+            ('c', intermediates) if next_param_or(0) == 0 => {
+                handler.identify_terminal(intermediates.first().map(|&i| i as char))
+            }
             ('D', []) => self.handler.move_backward(next_param_or(1).into()),
             ('d', []) => self.handler.goto_line((next_param_or(1) - 1) as i32),
             ('E', []) => self.handler.move_down(next_param_or(1).into()),
@@ -253,7 +430,10 @@ impl<'a, H: Handler> Executor for HandlerExecutor<'a, H> {
             ('h', [b'?']) => {
                 for param in params_iter.map(|p| p.as_slice()[0]) {
                     if param == NamedPrivateMode::SyncUpdate as u16 {
-                        // TODO
+                        self.state
+                            .sync_state
+                            .timeout
+                            .set_timeout(SYNC_UPDATE_TIMEOUT);
                     }
 
                     self.handler.set_private_mode(PrivateMode::new(param));
