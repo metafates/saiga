@@ -4,14 +4,14 @@ use log::debug;
 
 use super::{
     c0,
-    handler::{Charset, CharsetIndex, Direction, Handler, Rgb},
+    handler::{Charset, CharsetIndex, Handler, Rgb},
 };
 use crate::{
     ansi::handler::{
         Attribute, Color, Hyperlink, LineClearMode, Mode, NamedColor, NamedPrivateMode,
         PrivateMode, ScreenClearMode,
     },
-    param::{Param, Params, Subparam},
+    param::{Params, Subparam},
 };
 use crate::{param, utf8, Executor, MAX_INTERMEDIATES};
 
@@ -99,7 +99,7 @@ impl<'a, H: Handler> Executor for HandlerExecutor<'a, H> {
                 let title = title.join(&param::PARAM_SEPARATOR);
 
                 if let Ok(title) = simdutf8::basic::from_utf8(&title) {
-                        self.handler.set_title(Some(title.to_string()));
+                    self.handler.set_title(Some(title.to_string()));
                 }
             }
 
@@ -230,34 +230,18 @@ impl<'a, H: Handler> Executor for HandlerExecutor<'a, H> {
 
         match (action, intermediates) {
             ('@', []) => self.handler.insert_blank(next_param_or(1).into()),
-            ('A', []) => self
-                .handler
-                .move_up(next_param_or(1).into()),
-            ('B' | 'e', []) => {
-                self.handler
-                    .move_down(next_param_or(1).into())
-            }
-            ('C' | 'a', []) => {
-                self.handler
-                    .move_forward(next_param_or(1).into())
-            }
+            ('A', []) => self.handler.move_up(next_param_or(1).into()),
+            ('B' | 'e', []) => self.handler.move_down(next_param_or(1).into()),
+            ('C' | 'a', []) => self.handler.move_forward(next_param_or(1).into()),
             ('c', _) => self.handler.identify_terminal(None), // TODO: pass intermediates?
-            ('D', []) => self
-                .handler
-                .move_backward(next_param_or(1).into()),
+            ('D', []) => self.handler.move_backward(next_param_or(1).into()),
             ('d', []) => self.handler.goto_line((next_param_or(1) - 1) as i32),
-            ('E', []) => self
-                .handler
-                .move_down(next_param_or(1).into()),
-            ('F', []) => self
-                .handler
-                .move_up(next_param_or(1).into()),
-            ('G' | '`', []) => self
-                .handler
-                .goto_col((next_param_or(1) - 1) as usize),
+            ('E', []) => self.handler.move_down(next_param_or(1).into()),
+            ('F', []) => self.handler.move_up(next_param_or(1).into()),
+            ('G' | '`', []) => self.handler.goto_col((next_param_or(1) - 1) as usize),
             ('H' | 'f', []) => {
-                let line = next_param_or(1)  - 1;
-                let column = next_param_or(1)  - 1;
+                let line = next_param_or(1) - 1;
+                let column = next_param_or(1) - 1;
 
                 self.handler.goto(line as i32, column as usize);
             }
@@ -434,4 +418,3 @@ where
         _ => None,
     }
 }
-

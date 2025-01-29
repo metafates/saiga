@@ -11,3 +11,22 @@ log = "0.4.22"
 bitflags = "2.6.0"
 base64 = "0.22.1"
 regex-automata = "0.4.9"
+parking_lot = "0.12.3"
+polling = "3.7.4"
+home = "0.5.11"
+
+[target.'cfg(unix)'.dependencies]
+rustix-openpty = "0.1.1"
+signal-hook = "0.3.10"
+
+[target.'cfg(windows)'.dependencies]
+piper = "0.2.1"
+miow = "0.6.0"
+windows-sys = { version = "0.52.0", features = [
+    "Win32_System_Console",
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+    "Win32_System_WindowsProgramming",
+] }
