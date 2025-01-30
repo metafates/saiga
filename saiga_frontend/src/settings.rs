@@ -8,6 +8,7 @@ const DEFAULT_SHELL: &str = "wsl.exe";
 #[cfg(not(target_os = "windows"))]
 const DEFAULT_SHELL: &str = "/bin/bash";
 
+#[derive(Default)]
 pub struct Settings {
     pub font: FontSettings,
     pub backend: BackendSettings,
