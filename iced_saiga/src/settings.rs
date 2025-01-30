@@ -15,6 +15,7 @@ pub struct Settings {
     pub theme: ThemeSettings,
 }
 
+#[derive(Clone)]
 pub struct BackendSettings {
     pub shell: String,
 }
@@ -27,6 +28,7 @@ impl Default for BackendSettings {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct FontSettings {
     pub size: f32,
     pub scale_factor: f32,
@@ -46,4 +48,10 @@ impl Default for FontSettings {
 #[derive(Default)]
 pub struct ThemeSettings {
     pub color_palette: ColorPalette,
+}
+
+impl ThemeSettings {
+    pub fn new(color_palette: ColorPalette) -> Self {
+        Self { color_palette }
+    }
 }

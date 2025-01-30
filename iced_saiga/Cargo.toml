@@ -1,0 +1,20 @@
+[package]
+name = "iced_saiga"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+saiga_backend = { path = "../saiga_backend" }
+saiga_vte = { path = "../saiga_vte" }
+iced = { version = "0.13.1", features = [
+    "smol",
+    "tokio",
+    "canvas",
+    "wgpu",
+    "lazy",
+    "advanced",
+] }
+iced_graphics = "0.13.0"
+iced_core = "0.13.2"
+tokio = { version = "1.43.0", features = ["full"] }
+log = "0.4.25"
