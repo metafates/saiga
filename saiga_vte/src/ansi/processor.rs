@@ -50,7 +50,7 @@ pub trait Timeout: Default {
     fn pending_timeout(&self) -> bool;
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct StdSyncHandler {
     timeout: Option<Instant>,
 }
@@ -63,7 +63,7 @@ impl StdSyncHandler {
     }
 }
 
-impl Timeout for StdSyncHandler {
+impl StdSyncHandler {
     #[inline]
     fn set_timeout(&mut self, duration: Duration) {
         self.timeout = Some(Instant::now() + duration);
@@ -82,45 +82,45 @@ impl Timeout for StdSyncHandler {
 
 /// Internal state for VTE processor.
 #[derive(Debug, Default)]
-struct ProcessorState<T: Timeout> {
+struct ProcessorState {
     /// Last processed character for repetition.
     preceding_char: Option<char>,
 
     /// State for synchronized terminal updates.
-    sync_state: SyncState<T>,
+    sync_state: SyncState,
 }
 
 #[derive(Debug)]
-struct SyncState<T: Timeout> {
+struct SyncState {
     /// Handler for synchronized updates.
-    timeout: T,
+    timeout: StdSyncHandler,
 
     /// Bytes read during the synchronized update.
     buffer: Vec<u8>,
 }
 
-impl<T: Timeout> Default for SyncState<T> {
+impl Default for SyncState {
     fn default() -> Self {
         Self {
             buffer: Vec::with_capacity(SYNC_BUFFER_SIZE),
-            timeout: T::default(),
+            timeout: StdSyncHandler::default(),
         }
     }
 }
 
 #[derive(Default)]
-pub struct Processor<T: Timeout = StdSyncHandler> {
-    state: ProcessorState<T>,
+pub struct Processor {
+    state: ProcessorState,
     parser: crate::Parser,
 }
 
-impl<T: Timeout> Processor<T> {
+impl Processor {
     pub fn new() -> Self {
         Default::default()
     }
 
     /// Synchronized update timeout.
-    pub fn sync_timeout(&self) -> &T {
+    pub fn sync_timeout(&self) -> &StdSyncHandler {
         &self.state.sync_state.timeout
     }
 
@@ -195,18 +195,18 @@ impl<T: Timeout> Processor<T> {
     }
 }
 
-struct HandlerExecutor<'a, H: Handler, T: Timeout> {
-    state: &'a mut ProcessorState<T>,
+struct HandlerExecutor<'a, H: Handler> {
+    state: &'a mut ProcessorState,
     handler: &'a mut H,
 }
 
-impl<'a, H: Handler + 'a, T: Timeout> HandlerExecutor<'a, H, T> {
-    fn new<'b>(state: &'b mut ProcessorState<T>, handler: &'b mut H) -> HandlerExecutor<'b, H, T> {
+impl<'a, H: Handler + 'a> HandlerExecutor<'a, H> {
+    fn new<'b>(state: &'b mut ProcessorState, handler: &'b mut H) -> HandlerExecutor<'b, H> {
         HandlerExecutor { state, handler }
     }
 }
 
-impl<H: Handler, T: Timeout> Executor for HandlerExecutor<'_, H, T> {
+impl<H: Handler> Executor for HandlerExecutor<'_, H> {
     fn print(&mut self, c: char) {
         self.handler.input(c);
         self.state.preceding_char = Some(c)
@@ -254,6 +254,7 @@ impl<H: Handler, T: Timeout> Executor for HandlerExecutor<'_, H, T> {
                 debug!("[Unhandled OSC] params={params:?}, bell_terminated={bell_terminated:?}",);
             }};
         }
+        let terminator = if bell_terminated { "\x07" } else { "\x1b\\" };
 
         static URI_PREFIXES: [&[u8]; 5] =
             [b"https://", b"http://", b"file://", b"mailto://", b"ftp://"];
@@ -269,7 +270,27 @@ impl<H: Handler, T: Timeout> Executor for HandlerExecutor<'_, H, T> {
             }
 
             // Change color number
-            [b"4", params @ ..] if !params.is_empty() && params.len() % 2 == 0 => {}
+            [b"4", params @ ..] if !params.is_empty() && params.len() % 2 == 0 => {
+                for chunk in params.chunks(2) {
+                    let index = match parse_number(chunk[0]) {
+                        Some(index) => index,
+                        None => {
+                            unhandled!();
+                            continue;
+                        }
+                    };
+
+                    if let Some(c) = xparse_color(chunk[1]) {
+                        self.handler.set_color(index as usize, c);
+                    } else if chunk[1] == b"?" {
+                        let prefix = format!("4;{index}");
+                        self.handler
+                            .dynamic_color_sequence(prefix, index as usize, terminator);
+                    } else {
+                        unhandled!();
+                    }
+                }
+            }
 
             // Create a hyperlink to uri using params.
             [b"8", params, uri] if URI_PREFIXES.into_iter().any(|p| uri.starts_with(p)) => {
@@ -286,13 +307,40 @@ impl<H: Handler, T: Timeout> Executor for HandlerExecutor<'_, H, T> {
             }
 
             // TODO: Set or query default foreground color.
-            [b"10", param] => {}
+            [color_num @ (b"10" | b"11" | b"12"), params @ ..] => {
+                if params.is_empty() {
+                    unhandled!();
+                    return;
+                }
 
-            // TODO: Set or query default background color.
-            [b"11", param] => {}
+                if let Some(mut dynamic_code) = parse_number(color_num) {
+                    for param in params {
+                        // 10 is the first dynamic color, also the foreground.
+                        let offset = dynamic_code as usize - 10;
+                        let index = NamedColor::Foreground as usize + offset;
 
-            // TODO: Set or query default cursor color.
-            [b"12", param] => {}
+                        // End of setting dynamic colors.
+                        if index > NamedColor::Cursor as usize {
+                            unhandled!();
+                            break;
+                        }
+
+                        if let Some(color) = xparse_color(param) {
+                            self.handler.set_color(index, color);
+                        } else if param == b"?" {
+                            self.handler.dynamic_color_sequence(
+                                dynamic_code.to_string(),
+                                index,
+                                terminator,
+                            );
+                        } else {
+                            unhandled!();
+                        }
+
+                        dynamic_code += 1;
+                    }
+                }
+            }
 
             // TODO: cursor shape and style
 
@@ -307,16 +355,33 @@ impl<H: Handler, T: Timeout> Executor for HandlerExecutor<'_, H, T> {
             }
 
             // Reset color number `color` to themed color.
-            [b"104", [color]] => {}
+            [b"104", params @ ..] => {
+                // Reset all color indexes when no parameters are given.
+                if params.is_empty() {
+                    for i in 0..256 {
+                        self.handler.reset_color(i);
+                    }
+
+                    return;
+                }
+
+                // Reset color indexes given as parameters.
+                for param in params {
+                    match parse_number(param) {
+                        Some(index) => self.handler.reset_color(index as usize),
+                        None => unhandled!(),
+                    }
+                }
+            }
 
             // Restore default foreground to themed color.
-            [b"110"] => {}
+            [b"110"] => self.handler.reset_color(NamedColor::Foreground as usize),
 
             // Restore default background to themed color.
-            [b"111"] => {}
+            [b"111"] => self.handler.reset_color(NamedColor::Background as usize),
 
             // Restore default cursor to themed color.
-            [b"112"] => {}
+            [b"112"] => self.handler.reset_color(NamedColor::Cursor as usize),
 
             _ => {
                 unhandled!()
@@ -354,7 +419,7 @@ impl<H: Handler, T: Timeout> Executor for HandlerExecutor<'_, H, T> {
                 self.handler.linefeed();
                 self.handler.carriage_return();
             }
-            (b'Z', []) => self.handler.identify_terminal(None), // TODO
+            (b'Z', []) => self.handler.identify_terminal(None),
             (b'c', []) => self.handler.reset_state(),
             (b'7', []) => self.handler.save_cursor_position(),
             (b'8', []) => self.handler.restore_cursor_position(),
@@ -597,4 +662,76 @@ where
         Some(5) => Some(Color::Indexed(u8::try_from(params.next()?).ok()?)),
         _ => None,
     }
+}
+
+/// Parse colors in XParseColor format.
+fn xparse_color(color: &[u8]) -> Option<Rgb> {
+    if !color.is_empty() && color[0] == b'#' {
+        parse_legacy_color(&color[1..])
+    } else if color.len() >= 4 && &color[..4] == b"rgb:" {
+        parse_rgb_color(&color[4..])
+    } else {
+        None
+    }
+}
+
+/// Parse colors in `rgb:r(rrr)/g(ggg)/b(bbb)` format.
+fn parse_rgb_color(color: &[u8]) -> Option<Rgb> {
+    let colors = simdutf8::basic::from_utf8(color)
+        .ok()?
+        .split('/')
+        .collect::<Vec<_>>();
+
+    if colors.len() != 3 {
+        return None;
+    }
+
+    // Scale values instead of filling with `0`s.
+    let scale = |input: &str| {
+        if input.len() > 4 {
+            None
+        } else {
+            let max = u32::pow(16, input.len() as u32) - 1;
+            let value = u32::from_str_radix(input, 16).ok()?;
+            Some((255 * value / max) as u8)
+        }
+    };
+
+    Some(Rgb {
+        r: scale(colors[0])?,
+        g: scale(colors[1])?,
+        b: scale(colors[2])?,
+    })
+}
+
+/// Parse colors in `#r(rrr)g(ggg)b(bbb)` format.
+fn parse_legacy_color(color: &[u8]) -> Option<Rgb> {
+    let item_len = color.len() / 3;
+
+    // Truncate/Fill to two byte precision.
+    let color_from_slice = |slice: &[u8]| {
+        let col = usize::from_str_radix(simdutf8::basic::from_utf8(slice).ok()?, 16).ok()? << 4;
+        Some((col >> (4 * slice.len().saturating_sub(1))) as u8)
+    };
+
+    Some(Rgb {
+        r: color_from_slice(&color[0..item_len])?,
+        g: color_from_slice(&color[item_len..item_len * 2])?,
+        b: color_from_slice(&color[item_len * 2..])?,
+    })
+}
+
+fn parse_number(input: &[u8]) -> Option<u8> {
+    if input.is_empty() {
+        return None;
+    }
+    let mut num: u8 = 0;
+    for c in input {
+        let c = *c as char;
+        let digit = c.to_digit(10)?;
+        num = num
+            .checked_mul(10)
+            .and_then(|v| v.checked_add(digit as u8))?;
+    }
+    Some(num)
 }
