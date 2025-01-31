@@ -4,9 +4,6 @@ use std::ops::{Index, IndexMut, Range};
 use std::sync::Arc;
 use std::{cmp, mem, ptr, slice, str};
 
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
-
 use base64::engine::general_purpose::STANDARD as Base64;
 use base64::Engine;
 use bitflags::bitflags;
@@ -15,7 +12,7 @@ use unicode_width::UnicodeWidthChar;
 
 use crate::event::{Event, EventListener};
 use crate::grid::{Dimensions, Grid, GridIterator, Scroll};
-use crate::index::{self, Boundary, Column, Direction, Line, Point, Side};
+use crate::index::{self, Boundary, Column, Direction, Line, Point};
 use crate::selection::{Selection, SelectionRange, SelectionType};
 use crate::term::cell::{Cell, Flags, LineLength};
 use crate::term::color::Colors;
@@ -206,7 +203,7 @@ impl<'a> TermDamageIterator<'a> {
     }
 }
 
-impl<'a> Iterator for TermDamageIterator<'a> {
+impl Iterator for TermDamageIterator<'_> {
     type Item = LineDamageBounds;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -373,11 +370,6 @@ impl Default for Config {
 
 /// OSC 52 behavior.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-#[cfg_attr(
-    feature = "serde",
-    derive(Serialize, Deserialize),
-    serde(rename_all = "lowercase")
-)]
 pub enum Osc52 {
     /// The handling of the escape sequence is disabled.
     Disabled,
@@ -402,10 +394,6 @@ impl<T> Term<T> {
         let old_display_offset = self.grid.display_offset();
         self.grid.scroll_display(scroll);
         self.event_proxy.send_event(Event::MouseCursorDirty);
-
-        // Clamp vi mode cursor to the viewport.
-        let viewport_start = -(self.grid.display_offset() as i32);
-        let viewport_end = viewport_start + self.bottommost_line().0;
 
         // Damage everything if display offset changed.
         if old_display_offset != self.grid().display_offset() {
@@ -902,11 +890,8 @@ impl<T> Term<T> {
     /// While vi mode is active, this will automatically return the vi mode cursor style.
     #[inline]
     pub fn cursor_style(&self) -> CursorStyle {
-        let cursor_style = self
-            .cursor_style
-            .unwrap_or(self.config.default_cursor_style);
-
-        cursor_style
+        self.cursor_style
+            .unwrap_or(self.config.default_cursor_style)
     }
 
     pub fn colors(&self) -> &Colors {
@@ -1777,12 +1762,7 @@ impl<T: EventListener> Handler for Term<T> {
                 if self.mode.contains(TermMode::ALT_SCREEN) {
                     self.grid.reset_region(..);
                 } else {
-                    let old_offset = self.grid.display_offset();
-
                     self.grid.clear_viewport();
-
-                    // Compute number of lines scrolled by clearing the viewport.
-                    let lines = self.grid.display_offset().saturating_sub(old_offset);
                 }
 
                 self.selection = None;
@@ -2793,20 +2773,6 @@ mod tests {
             term.selection_to_string(),
             Some(String::from("\na\"\na\"\na"))
         );
-    }
-
-    /// Check that the grid can be serialized back and forth losslessly.
-    ///
-    /// This test is in the term module as opposed to the grid since we want to
-    /// test this property with a T=Cell.
-    #[test]
-    #[cfg(feature = "serde")]
-    fn grid_serde() {
-        let grid: Grid<Cell> = Grid::new(24, 80, 0);
-        let serialized = serde_json::to_string(&grid).expect("ser");
-        let deserialized = serde_json::from_str::<Grid<Cell>>(&serialized).expect("de");
-
-        assert_eq!(deserialized, grid);
     }
 
     #[test]

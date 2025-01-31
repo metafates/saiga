@@ -313,13 +313,13 @@ impl TryFrom<u8> for CharsetIndex {
     type Error = ();
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
-        return match value {
+        match value {
             b'(' => Ok(CharsetIndex::G0),
             b')' => Ok(CharsetIndex::G1),
             b'*' => Ok(CharsetIndex::G2),
             b'+' => Ok(CharsetIndex::G3),
             _ => Err(()),
-        };
+        }
     }
 }
 
@@ -837,9 +837,6 @@ pub trait Handler {
 
     /// Set hyperlink.
     fn set_hyperlink(&mut self, _: Option<Hyperlink>) {}
-
-    /// Set mouse cursor icon.
-    // fn set_mouse_cursor_icon(&mut self, _: CursorIcon) {}
 
     /// Report current keyboard mode.
     fn report_keyboard_mode(&mut self) {}

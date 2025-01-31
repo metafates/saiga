@@ -53,7 +53,7 @@ pub fn expected_bytes_count(first_byte: u8) -> Option<usize> {
 }
 
 pub fn from_utf8(utf8: &[u8]) -> Result<&str, Utf8Error> {
-    return simdutf8::basic::from_utf8(utf8);
+    simdutf8::basic::from_utf8(utf8)
 }
 
 pub fn into_char(utf8: &[u8]) -> char {

@@ -251,8 +251,11 @@ impl Parser {
 
             let bytes_count = min(want_bytes_count, remaining_bytes.len());
 
-            for i in 0..bytes_count {
-                self.utf8.push(remaining_bytes[i]);
+            // for i in 0..bytes_count {
+            //     self.utf8.push(remaining_bytes[i]);
+            // }
+            for b in remaining_bytes.iter().take(bytes_count) {
+                self.utf8.push(*b);
             }
 
             self.utf8.remaining_count = want_bytes_count - bytes_count;
@@ -465,7 +468,7 @@ mod tests {
         fn hook(&mut self, params: &Params, intermediates: &[u8], ignore: bool, c: char) {
             let params = params
                 .as_slice()
-                .into_iter()
+                .iter()
                 .map(|param| param.as_slice().to_vec())
                 .collect();
 
@@ -495,7 +498,7 @@ mod tests {
         fn csi_dispatch(&mut self, params: &Params, intermediates: &[u8], ignore: bool, c: char) {
             let params = params
                 .as_slice()
-                .into_iter()
+                .iter()
                 .map(|param| param.as_slice().to_vec())
                 .collect();
 
@@ -593,7 +596,7 @@ mod tests {
         fn exceed_max_buffer_size() {
             static NUM_BYTES: usize = MAX_OSC_PARAMS + 100;
             static INPUT_START: &[u8] = &[0x1b, b']', b'5', b'2', b';', b's'];
-            static INPUT_END: &[u8] = &[b'\x07'];
+            static INPUT_END: &[u8] = b"\x07";
 
             let mut dispatcher = Dispatcher::default();
             let mut parser = Parser::new();
@@ -742,7 +745,7 @@ mod tests {
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
                 Sequence::Csi(params, intermediates, ignore, _) => {
-                    assert_eq!(intermediates, &[b'?']);
+                    assert_eq!(intermediates, b"?");
                     assert_eq!(params, &[[1049]]);
                     assert!(!ignore);
                 }
@@ -849,7 +852,7 @@ mod tests {
 
             match &dispatcher.dispatched[0] {
                 Sequence::DcsHook(params, intermediates, ignore, _) => {
-                    assert_eq!(intermediates, &[b'$']);
+                    assert_eq!(intermediates, b"$");
                     assert_eq!(params, &[[1]]);
                     assert!(!ignore);
                 }
@@ -895,7 +898,7 @@ mod tests {
 
             assert_eq!(dispatcher.dispatched.len(), 6);
             match &dispatcher.dispatched[5] {
-                Sequence::Esc(intermediates, ..) => assert_eq!(intermediates, &[b'+']),
+                Sequence::Esc(intermediates, ..) => assert_eq!(intermediates, b"+"),
                 _ => panic!("expected esc sequence"),
             }
         }
@@ -915,7 +918,7 @@ mod tests {
             assert_eq!(dispatcher.dispatched.len(), 1);
             match &dispatcher.dispatched[0] {
                 Sequence::Esc(intermediates, ignore, byte) => {
-                    assert_eq!(intermediates, &[b'(']);
+                    assert_eq!(intermediates, b"(");
                     assert_eq!(*byte, b'A');
                     assert!(!ignore);
                 }
@@ -999,7 +1002,7 @@ mod bench {
             for i in 1..=10 {
                 for j in 1..=10 {
                     v.extend(format!("\x1B[{i};{j}H{c}").as_bytes());
-                    v.extend(format!("some ascii with unicode ݖݗݘݙݚݛݜݝݞݟݠݡ").as_bytes());
+                    v.extend(r#"some ascii with unicode ݖݗݘݙݚݛݜݝݞݟݠݡ"#.to_string().as_bytes());
                 }
             }
         }

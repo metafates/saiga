@@ -5,9 +5,6 @@ use std::cmp::{max, min, Ord, Ordering};
 use std::fmt;
 use std::ops::{Add, AddAssign, Deref, Sub, SubAssign};
 
-#[cfg(feature = "serde")]
-use serde::{Deserialize, Serialize};
-
 use crate::grid::Dimensions;
 
 /// The side of a cell.
@@ -103,11 +100,11 @@ impl Point {
             Boundary::Grid if self.line < topmost_line => Point::new(topmost_line, Column(0)),
             Boundary::Cursor | Boundary::Grid if self.line > bottommost_line => {
                 Point::new(bottommost_line, last_column)
-            },
+            }
             Boundary::None => {
                 self.line = self.line.grid_clamp(dimensions, boundary);
                 self
-            },
+            }
             _ => self,
         }
     }
@@ -131,7 +128,6 @@ impl<L: Ord, C: Ord> Ord for Point<L, C> {
 ///
 /// Newtype to avoid passing values incorrectly.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Default, Ord, PartialOrd)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Line(pub i32);
 
 impl Line {
@@ -144,7 +140,7 @@ impl Line {
                 let bottommost_line = dimensions.bottommost_line();
                 let topmost_line = dimensions.topmost_line();
                 max(topmost_line, min(bottommost_line, self))
-            },
+            }
             Boundary::None => {
                 let screen_lines = dimensions.screen_lines() as i32;
                 let total_lines = dimensions.total_lines() as i32;
@@ -158,7 +154,7 @@ impl Line {
                     let extra = (self.0 - screen_lines + 1) % total_lines;
                     bottommost_line + extra
                 }
-            },
+            }
         }
     }
 }
@@ -225,7 +221,6 @@ impl PartialEq<usize> for Line {
 ///
 /// Newtype to avoid passing values incorrectly.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Default, Ord, PartialOrd)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Column(pub usize);
 
 impl fmt::Display for Column {

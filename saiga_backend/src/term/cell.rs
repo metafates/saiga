@@ -9,7 +9,6 @@ use saiga_vte::ansi::handler::{Color, Hyperlink as VteHyperlink, NamedColor};
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
     pub struct Flags: u16 {
         const INVERSE                   = 0b0000_0000_0000_0001;
         const BOLD                      = 0b0000_0000_0000_0010;
@@ -38,7 +37,6 @@ bitflags! {
 static HYPERLINK_ID_SUFFIX: AtomicU32 = AtomicU32::new(0);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Hyperlink {
     inner: Arc<HyperlinkInner>,
 }
@@ -66,12 +64,14 @@ impl From<VteHyperlink> for Hyperlink {
 
 impl From<Hyperlink> for VteHyperlink {
     fn from(val: Hyperlink) -> Self {
-        VteHyperlink { id: Some(val.id().to_owned()), uri: val.uri().to_owned() }
+        VteHyperlink {
+            id: Some(val.id().to_owned()),
+            uri: val.uri().to_owned(),
+        }
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 struct HyperlinkInner {
     /// Identifier for the given hyperlink.
     id: String,
@@ -85,10 +85,12 @@ impl HyperlinkInner {
         let id = match id {
             Some(id) => id.to_string(),
             None => {
-                let mut id = HYPERLINK_ID_SUFFIX.fetch_add(1, Ordering::Relaxed).to_string();
+                let mut id = HYPERLINK_ID_SUFFIX
+                    .fetch_add(1, Ordering::Relaxed)
+                    .to_string();
                 id.push_str("_alacritty");
                 id
-            },
+            }
         };
 
         Self { id, uri }
@@ -119,7 +121,6 @@ impl ResetDiscriminant<Color> for Cell {
 /// allocation required ahead of time for every cell, with some additional overhead when the extra
 /// storage is actually required.
 #[derive(Default, Debug, Clone, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct CellExtra {
     zerowidth: Vec<char>,
 
@@ -130,7 +131,6 @@ pub struct CellExtra {
 
 /// Content and attributes of a single cell in the terminal grid.
 #[derive(Clone, Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Cell {
     pub c: char,
     pub fg: Color,
@@ -183,7 +183,7 @@ impl Cell {
             && self
                 .extra
                 .as_ref()
-                .map_or(true, |extra| extra.zerowidth.is_empty() && extra.hyperlink.is_none())
+                .is_none_or(|extra| extra.zerowidth.is_empty() && extra.hyperlink.is_none())
         {
             self.extra = None;
         } else {
@@ -201,9 +201,10 @@ impl Cell {
     /// Set hyperlink.
     pub fn set_hyperlink(&mut self, hyperlink: Option<Hyperlink>) {
         let should_drop = hyperlink.is_none()
-            && self.extra.as_ref().map_or(true, |extra| {
-                extra.zerowidth.is_empty() && extra.underline_color.is_none()
-            });
+            && self
+                .extra
+                .as_ref()
+                .is_none_or(|extra| extra.zerowidth.is_empty() && extra.underline_color.is_none());
 
         if should_drop {
             self.extra = None;
@@ -249,14 +250,20 @@ impl GridCell for Cell {
 
     #[inline]
     fn reset(&mut self, template: &Self) {
-        *self = Cell { bg: template.bg, ..Cell::default() };
+        *self = Cell {
+            bg: template.bg,
+            ..Cell::default()
+        };
     }
 }
 
 impl From<Color> for Cell {
     #[inline]
     fn from(color: Color) -> Self {
-        Self { bg: color, ..Cell::default() }
+        Self {
+            bg: color,
+            ..Cell::default()
+        }
     }
 }
 
