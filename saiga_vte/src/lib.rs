@@ -262,7 +262,9 @@ impl Parser {
         let change = table::change_state(State::Anywhere, byte)
             .or_else(|| table::change_state(self.state, byte));
 
-        let (state, action) = change.expect("state change must be known for any input");
+        let Some((state, action)) = change else {
+            return;
+        };
 
         self.state_change(executor, state, action, byte);
     }

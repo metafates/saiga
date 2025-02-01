@@ -105,9 +105,9 @@ pub fn change_state(state: State, byte: u8) -> Option<(State, Option<Action>)> {
 
     match state {
         Anywhere => match byte {
-            0x18 | 0x1A | 0x80..=0x8F | 0x91..=0x97 | 0x99..=0x9A => Some((Ground, Some(Execute))),
-            0x1B => Some((Escape, None)),
+            0x18 | 0x1A | 0x80..=0x8F | 0x91..=0x97 | 0x99 | 0x9A => Some((Ground, Some(Execute))),
             0x9C => Some((Ground, None)),
+            0x1B => Some((Escape, None)),
             0x98 | 0x9E | 0x9F => Some((SosPmApcString, None)),
             0x90 => Some((DcsEntry, None)),
             0x9D => Some((OscString, None)),
@@ -155,7 +155,7 @@ pub fn change_state(state: State, byte: u8) -> Option<(State, Option<Action>)> {
             0x40..=0x7E => Some((Ground, Some(CsiDispatch))),
 
             // 0x3A ':' (colon) should result CsiIgnore state according to the parser
-            // specification. However, our parser implements subparameters separated by colon
+            // specification. However, this parser implements subparameters separated by colon
             0x30..=0x3B => Some((CsiParam, Some(Param))),
             0x3C..=0x3F => Some((CsiParam, Some(Collect))),
 
@@ -168,6 +168,8 @@ pub fn change_state(state: State, byte: u8) -> Option<(State, Option<Action>)> {
             // 0x3A ':' (colon) should result CsiIgnore state according to the parser
             // specification. However, our parser implements subparameters separated by colon
             0x30..=0x3B => Some((Anywhere, Some(Param))),
+
+            0x7F => Some((Anywhere, Some(Ignore))),
 
             0x3C..=0x3F => Some((CsiIgnore, None)),
             0x20..=0x2F => Some((CsiIntermediate, None)),
@@ -243,10 +245,10 @@ pub fn change_state(state: State, byte: u8) -> Option<(State, Option<Action>)> {
         },
 
         OscString => match byte {
-            0x00..=0x06 | 0x08..=0x17 | 0x19 | 0x1C..=0x1F => Some((Anywhere, Some(Ignore))),
+            0x00..=0x17 | 0x19 | 0x1C..=0x1F => Some((Anywhere, Some(Ignore))),
             0x20..=0x7F => Some((Anywhere, Some(OscPut))),
 
-            0x07 | 0x9C => Some((Ground, None)),
+            0x9C => Some((Ground, None)),
 
             _ => None,
         },
