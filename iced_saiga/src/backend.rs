@@ -101,7 +101,7 @@ impl Backend {
         };
 
         let term = Arc::new(FairMutex::new(term));
-        let pty_event_loop = EventLoop::new(term.clone(), event_proxy, pty, false, false)?;
+        let pty_event_loop = EventLoop::new(term.clone(), event_proxy, pty, false)?;
         let notifier = Notifier(pty_event_loop.channel());
 
         // TODO: use it

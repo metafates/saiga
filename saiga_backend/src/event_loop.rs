@@ -3,7 +3,6 @@
 use std::borrow::Cow;
 use std::collections::VecDeque;
 use std::fmt::{self, Display, Formatter};
-use std::fs::File;
 use std::io::{self, ErrorKind, Read, Write};
 use std::num::NonZeroUsize;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
@@ -32,7 +31,7 @@ pub enum Msg {
     /// Data that should be written to the PTY.
     Input(Cow<'static, [u8]>),
 
-    /// Indicates that the `EventLoop` should shut down, as Alacritty is shutting down.
+    /// Indicates that the `EventLoop` should shut down, as Saiga is shutting down.
     Shutdown,
 
     /// Instruction to resize the PTY.
@@ -51,7 +50,6 @@ pub struct EventLoop<T: tty::EventedPty, U: EventListener> {
     terminal: Arc<FairMutex<Term<U>>>,
     event_proxy: U,
     hold: bool,
-    ref_test: bool,
 }
 
 impl<T, U> EventLoop<T, U>
@@ -65,7 +63,6 @@ where
         event_proxy: U,
         pty: T,
         hold: bool,
-        ref_test: bool,
     ) -> io::Result<EventLoop<T, U>> {
         let (tx, rx) = mpsc::channel();
         let poll = polling::Poller::new()?.into();
@@ -77,7 +74,6 @@ where
             terminal,
             event_proxy,
             hold,
-            ref_test,
         })
     }
 
@@ -104,15 +100,7 @@ where
     }
 
     #[inline]
-    fn pty_read<X>(
-        &mut self,
-        state: &mut State,
-        buf: &mut [u8],
-        mut writer: Option<&mut X>,
-    ) -> io::Result<()>
-    where
-        X: Write,
-    {
+    fn pty_read(&mut self, state: &mut State, buf: &mut [u8]) -> io::Result<()> {
         let mut unprocessed = 0;
         let mut processed = 0;
 
@@ -147,11 +135,6 @@ where
                     Some(terminal) => terminal,
                 }),
             };
-
-            // Write a copy of the bytes to the ref test file.
-            if let Some(writer) = &mut writer {
-                writer.write_all(&buf[..unprocessed]).unwrap();
-            }
 
             // Parse the incoming bytes.
             state.parser.advance(&mut **terminal, &buf[..unprocessed]);
@@ -221,12 +204,6 @@ where
 
             let mut events = Events::with_capacity(NonZeroUsize::new(1024).unwrap());
 
-            let mut pipe = if self.ref_test {
-                Some(File::create("./alacritty.recording").expect("create alacritty recording"))
-            } else {
-                None
-            };
-
             'event_loop: loop {
                 // Wakeup the event loop when a synchronized update timeout was reached.
                 let handler = state.parser.sync_timeout();
@@ -267,7 +244,7 @@ where
                                 }
                                 if self.hold {
                                     // With hold enabled, make sure the PTY is drained.
-                                    let _ = self.pty_read(&mut state, &mut buf, pipe.as_mut());
+                                    let _ = self.pty_read(&mut state, &mut buf);
                                 } else {
                                     // Without hold, shutdown the terminal.
                                     self.terminal.lock().exit();
@@ -284,8 +261,7 @@ where
                             }
 
                             if event.readable {
-                                if let Err(err) = self.pty_read(&mut state, &mut buf, pipe.as_mut())
-                                {
+                                if let Err(err) = self.pty_read(&mut state, &mut buf) {
                                     // On Linux, a `read` on the master side of a PTY can fail
                                     // with `EIO` if the client side hangs up.  In that case,
                                     // just loop back round for the inevitable `Exited` event.

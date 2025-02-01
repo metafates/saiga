@@ -36,7 +36,7 @@ const PIPE_CAPACITY: usize = crate::event_loop::READ_BUFFER_SIZE;
 /// bugfixes compared to the standard conpty that ships with Windows.
 ///
 /// The conpty.dll and OpenConsole.exe files will be searched in PATH and in
-/// the directory where Alacritty's executable is located.
+/// the directory where Saiga executable is located.
 type CreatePseudoConsoleFn =
     unsafe extern "system" fn(COORD, HANDLE, HANDLE, u32, *mut HPCON) -> HRESULT;
 type ResizePseudoConsoleFn = unsafe extern "system" fn(HPCON, COORD) -> HRESULT;
@@ -54,7 +54,7 @@ impl ConptyApi {
             Some(conpty) => {
                 info!("Using conpty.dll for pseudoconsole");
                 conpty
-            },
+            }
             None => {
                 // Cannot load conpty.dll - use the standard Windows API.
                 info!("Using Windows API for pseudoconsole");
@@ -63,7 +63,7 @@ impl ConptyApi {
                     resize: ResizePseudoConsole,
                     close: ClosePseudoConsole,
                 }
-            },
+            }
         }
     }
 
@@ -144,7 +144,7 @@ pub fn new(config: &Options, window_size: WindowSize) -> Option<Pty> {
     startup_info_ex.StartupInfo.cb = mem::size_of::<STARTUPINFOEXW>() as u32;
 
     // Setting this flag but leaving all the handles as default (null) ensures the
-    // PTY process does not inherit any handles from this Alacritty process.
+    // PTY process does not inherit any handles from this Saiga process.
     startup_info_ex.StartupInfo.dwFlags |= STARTF_USESTDHANDLES;
 
     // Create the appropriately sized thread attribute list.
@@ -210,7 +210,7 @@ pub fn new(config: &Options, window_size: WindowSize) -> Option<Pty> {
         Some(custom_env_block) => {
             creation_flags |= CREATE_UNICODE_ENVIRONMENT;
             custom_env_block.as_ptr() as *mut std::ffi::c_void
-        },
+        }
         None => ptr::null_mut(),
     };
 
@@ -238,7 +238,10 @@ pub fn new(config: &Options, window_size: WindowSize) -> Option<Pty> {
     let conout = UnblockedReader::new(conout, PIPE_CAPACITY);
 
     let child_watcher = ChildExitWatcher::new(proc_info.hProcess).unwrap();
-    let conpty = Conpty { handle: pty_handle as HPCON, api };
+    let conpty = Conpty {
+        handle: pty_handle as HPCON,
+        api,
+    };
 
     Some(Pty::new(conpty, conout, conin, child_watcher))
 }
@@ -316,6 +319,9 @@ impl From<WindowSize> for COORD {
     fn from(window_size: WindowSize) -> Self {
         let lines = window_size.num_lines;
         let columns = window_size.num_cols;
-        COORD { X: columns as i16, Y: lines as i16 }
+        COORD {
+            X: columns as i16,
+            Y: lines as i16,
+        }
     }
 }

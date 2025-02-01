@@ -39,7 +39,7 @@ impl<T: GridCell + Default + PartialEq + Clone> Grid<T> {
 
     /// Add lines to the visible area.
     ///
-    /// Alacritty keeps the cursor at the bottom of the terminal as long as there
+    /// Keeps the cursor at the bottom of the terminal as long as there
     /// is scrollback available. Once scrollback is exhausted, new lines are
     /// simply added to the bottom of the screen.
     fn grow_lines<D>(&mut self, target: usize)
