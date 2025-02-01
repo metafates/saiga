@@ -8,7 +8,7 @@ mod table;
 mod utf8;
 
 use ansi::c0;
-use param::{Params, Subparam};
+use param::{Params, Subparam, PARAM_SEPARATOR};
 use std::cmp::min;
 use table::{Action, State};
 
@@ -105,36 +105,57 @@ impl OscHandler {
     }
 
     pub fn put(&mut self, byte: u8) {
-        self.raw.push(byte);
-    }
-
-    fn put_param(&mut self) {
         let idx = self.raw.len();
 
+        if byte == PARAM_SEPARATOR {
+            let param_idx = self.params_num;
+            match param_idx {
+                // Only process up to MAX_OSC_PARAMS
+                MAX_OSC_PARAMS => return,
+
+                // First param is special - 0 to current byte index
+                0 => {
+                    self.params[param_idx] = (0, idx);
+                }
+
+                // All other params depend on previous indexing
+                _ => {
+                    let prev = self.params[param_idx - 1];
+                    let begin = prev.1;
+                    self.params[param_idx] = (begin, idx);
+                }
+            }
+
+            self.params_num += 1;
+        } else {
+            self.raw.push(byte);
+        }
+    }
+
+    pub fn end<E: Executor>(&mut self, executor: &mut E, byte: u8) {
         let param_idx = self.params_num;
+        let idx = self.raw.len();
+
         match param_idx {
-            // First param is special - 0 to current byte index.
-            0 => self.params[param_idx] = (0, idx),
+            // Finish last parameter if not already maxed
+            MAX_OSC_PARAMS => (),
 
-            // Only process up to MAX_OSC_PARAMS.
-            MAX_OSC_PARAMS => return,
+            // First param is special - 0 to current byte index
+            0 => {
+                self.params[param_idx] = (0, idx);
+                self.params_num += 1;
+            }
 
-            // All other params depend on previous indexing.
+            // All other params depend on previous indexing
             _ => {
                 let prev = self.params[param_idx - 1];
                 let begin = prev.1;
                 self.params[param_idx] = (begin, idx);
+                self.params_num += 1;
             }
         }
 
-        self.params_num += 1;
-    }
-
-    pub fn end<E: Executor>(&mut self, executor: &mut E, byte: u8) {
-        self.put_param();
         self.dispatch(executor, byte);
-        self.raw.clear();
-        self.params_num = 0;
     }
 
     pub fn dispatch<E: Executor>(&self, executor: &mut E, byte: u8) {
