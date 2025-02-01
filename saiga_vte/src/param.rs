@@ -28,8 +28,14 @@ impl Param {
         self.len = 0
     }
 
+    #[must_use]
     pub fn len(&self) -> usize {
         self.len
+    }
+
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 
     pub fn push(&mut self, subparam: Subparam) {
@@ -41,10 +47,12 @@ impl Param {
         self.len += 1;
     }
 
+    #[must_use]
     pub fn is_full(&self) -> bool {
         self.len == MAX_SUBPARAMS
     }
 
+    #[must_use]
     pub fn as_slice(&self) -> &[Subparam] {
         &self.array[..self.len]
     }

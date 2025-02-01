@@ -1,4 +1,4 @@
-/// C0 set of 7-bit control characters (from ANSI X3.4-1977).
+//! C0 set of 7-bit control characters (from ANSI X3.4-1977).
 
 /// Null filler, terminal should ignore this character.
 pub const NUL: u8 = 0x00;
@@ -88,7 +88,7 @@ pub fn first_index_of_c0(haystack: &[u8]) -> Option<usize> {
     const INDICES: Simd<u8, LANES> =
         u8x16::from_array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
     const NULLS: Simd<u8, LANES> = u8x16::from_array([u8::MAX; LANES]);
-    //let nulls = u8x16::splat(u8::MAX);
+    // const NULLS: Simd<u8, LANES> = u8x16::splat(u8::MAX); // non const
 
     let mut pos = 0;
     let mut left = haystack.len();

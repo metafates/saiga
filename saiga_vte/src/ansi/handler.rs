@@ -633,6 +633,36 @@ pub enum Direction {
     Left,
 }
 
+/// SCP control's first parameter which determines character path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ScpCharPath {
+    /// SCP's first parameter value of 0. Behavior is implementation defined.
+    Default,
+    /// SCP's first parameter value of 1 which sets character path to
+    /// LEFT-TO-RIGHT.
+    LTR,
+    /// SCP's first parameter value of 2 which sets character path to
+    /// RIGHT-TO-LEFT.
+    RTL,
+}
+
+/// SCP control's second parameter which determines update mode/direction
+/// between components.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ScpUpdateMode {
+    /// SCP's second parameter value of 0 (the default). Implementation
+    /// dependant update.
+    ImplementationDependant,
+    /// SCP's second parameter value of 1.
+    ///
+    /// Reflect data component changes in the presentation component.
+    DataToPresentation,
+    /// SCP's second parameter value of 2.
+    ///
+    /// Reflect presentation component changes in the data component.
+    PresentationToData,
+}
+
 pub trait Handler {
     /// OSC to set window title.
     fn set_title(&mut self, _: Option<String>) {}
@@ -861,4 +891,7 @@ pub trait Handler {
     ///
     /// The output is of form `CSI > 4 ; mode m`.
     fn report_modify_other_keys(&mut self) {}
+
+    // Set SCP control.
+    fn set_scp(&mut self, _char_path: ScpCharPath, _update_mode: ScpUpdateMode) {}
 }

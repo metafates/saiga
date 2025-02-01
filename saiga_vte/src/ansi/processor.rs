@@ -1,4 +1,5 @@
 use std::{
+    fmt::Write,
     iter,
     time::{Duration, Instant},
 };
@@ -11,12 +12,14 @@ use super::{
 };
 use crate::{
     ansi::handler::{
-        Attribute, Color, Hyperlink, LineClearMode, Mode, NamedColor, NamedPrivateMode,
-        PrivateMode, ScreenClearMode,
+        Attribute, Color, CursorShape, CursorStyle, Hyperlink, KeyboardModes,
+        KeyboardModesApplyBehavior, LineClearMode, Mode, ModifyOtherKeys, NamedColor,
+        NamedPrivateMode, PrivateMode, ScpCharPath, ScpUpdateMode, ScreenClearMode,
+        TabulationClearMode,
     },
-    param::{Params, Subparam},
+    param::{Param, Subparam},
 };
-use crate::{param, utf8, Executor, MAX_INTERMEDIATES};
+use crate::{param, Executor, MAX_INTERMEDIATES};
 
 /// Maximum time before a synchronized update is aborted.
 const SYNC_UPDATE_TIMEOUT: Duration = Duration::from_millis(150);
@@ -179,11 +182,6 @@ impl Processor {
         let offset = len.saturating_sub(SYNC_ESCAPE_LEN);
         let end = &self.state.sync_state.buffer[offset..];
 
-        // NOTE: It is technically legal to specify multiple private modes in the same
-        // escape, but we only allow EXACTLY `\e[?2026h`/`\e[?2026l` to keep the parser
-        // reasonable.
-        //
-        // Check for extension/termination of the synchronized update.
         if end == BSU_CSI {
             self.state
                 .sync_state
@@ -249,28 +247,43 @@ impl<H: Handler> Executor for HandlerExecutor<'_, H> {
     }
 
     fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
-        macro_rules! unhandled {
-            () => {{
-                debug!("[Unhandled OSC] params={params:?}, bell_terminated={bell_terminated:?}",);
-            }};
+        if params.is_empty() || params[0].is_empty() {
+            return;
         }
+
         let terminator = if bell_terminated { "\x07" } else { "\x1b\\" };
 
-        static URI_PREFIXES: [&[u8]; 5] =
-            [b"https://", b"http://", b"file://", b"mailto://", b"ftp://"];
+        macro_rules! unhandled {
+            () => {{
+                let mut buf = String::new();
+                for items in params {
+                    buf.push('[');
+                    for item in *items {
+                        let _ = write!(buf, "{:?}", *item as char);
+                    }
+                    buf.push_str("],");
+                }
+
+                debug!("[unhandled osc_dispatch]: [{}] at line {}", &buf, line!());
+            }};
+        }
 
         match params {
             // set window title
             [b"0" | b"2", title @ ..] => {
-                let title = title.join(&param::PARAM_SEPARATOR);
+                let title = title
+                    .iter()
+                    .flat_map(|x| simdutf8::basic::from_utf8(x))
+                    .collect::<Vec<&str>>()
+                    .join(&param::PARAM_SEPARATOR.to_string())
+                    .trim()
+                    .to_string();
 
-                if let Ok(title) = simdutf8::basic::from_utf8(&title) {
-                    self.handler.set_title(Some(title.to_string()));
-                }
+                self.handler.set_title(Some(title.to_string()));
             }
 
             // Change color number
-            [b"4", params @ ..] if !params.is_empty() && params.len() % 2 == 0 => {
+            [b"4", params @ ..] if !params.is_empty() && params.len() % 2 != 0 => {
                 for chunk in params.chunks(2) {
                     let index = match parse_number(chunk[0]) {
                         Some(index) => index,
@@ -293,71 +306,88 @@ impl<H: Handler> Executor for HandlerExecutor<'_, H> {
             }
 
             // Create a hyperlink to uri using params.
-            [b"8", params, uri] if URI_PREFIXES.into_iter().any(|p| uri.starts_with(p)) => {
-                // Link parameters are in format of `key1=value1:key2=value2`. Currently only key
-                // `id` is defined.
-                let id = params
+            [b"8", link_params, uri, rest @ ..] => {
+                let mut uri = simdutf8::basic::from_utf8(uri)
+                    .unwrap_or_default()
+                    .to_string();
+
+                for param in rest {
+                    uri.push(param::PARAM_SEPARATOR.into());
+                    uri.push_str(simdutf8::basic::from_utf8(param).unwrap_or_default());
+                }
+
+                if uri.is_empty() {
+                    self.handler.set_hyperlink(None);
+                }
+
+                let id = link_params
                     .split(|&b| b == b':')
                     .find_map(|kv| kv.strip_prefix(b"id="))
-                    .and_then(|kv| utf8::from_utf8(kv).ok().map(|e| e.to_owned()));
-
-                let uri = utf8::from_utf8(uri).unwrap_or_default().to_string();
+                    .and_then(|kv| simdutf8::basic::from_utf8(kv).ok().map(|e| e.to_owned()));
 
                 self.handler.set_hyperlink(Some(Hyperlink { id, uri }));
             }
 
-            // TODO: Set or query default foreground color.
-            [color_num @ (b"10" | b"11" | b"12"), params @ ..] => {
-                if params.is_empty() {
-                    unhandled!();
+            [color_num @ (b"10" | b"11" | b"12"), params @ ..] if !params.is_empty() => {
+                let Some(mut dynamic_code) = parse_number(color_num) else {
                     return;
-                }
+                };
 
-                if let Some(mut dynamic_code) = parse_number(color_num) {
-                    for param in params {
-                        // 10 is the first dynamic color, also the foreground.
-                        let offset = dynamic_code as usize - 10;
-                        let index = NamedColor::Foreground as usize + offset;
+                for param in params {
+                    // 10 is the first dynamic color, also the foreground.
+                    let offset = dynamic_code as usize - 10;
+                    let index = NamedColor::Foreground as usize + offset;
 
-                        // End of setting dynamic colors.
-                        if index > NamedColor::Cursor as usize {
-                            unhandled!();
-                            break;
-                        }
-
-                        if let Some(color) = xparse_color(param) {
-                            self.handler.set_color(index, color);
-                        } else if param == b"?" {
-                            self.handler.dynamic_color_sequence(
-                                dynamic_code.to_string(),
-                                index,
-                                terminator,
-                            );
-                        } else {
-                            unhandled!();
-                        }
-
-                        dynamic_code += 1;
+                    // End of setting dynamic colors.
+                    if index > NamedColor::Cursor as usize {
+                        unhandled!();
+                        break;
                     }
+
+                    if let Some(color) = xparse_color(param) {
+                        self.handler.set_color(index, color);
+                    } else if param == b"?" {
+                        self.handler.dynamic_color_sequence(
+                            dynamic_code.to_string(),
+                            index,
+                            terminator,
+                        );
+                    } else {
+                        unhandled!();
+                    }
+
+                    dynamic_code += 1;
                 }
             }
 
-            // TODO: cursor shape and style
+            [b"50", param] if param.len() >= 13 && param[0..12] == *b"CursorShape=" => {
+                let shape = match param[12] as char {
+                    '0' => CursorShape::Block,
+                    '1' => CursorShape::Beam,
+                    '2' => CursorShape::Underline,
+                    _ => {
+                        unhandled!();
+                        return;
+                    }
+                };
+
+                self.handler.set_cursor_shape(shape);
+            }
 
             // Set or query clipboard
-            [b"52", clipboard, payload] => {
+            [b"52", clipboard, payload, ..] => {
                 let clipboard = clipboard.first().unwrap_or(&b'c');
 
                 match *payload {
-                    b"?" => self.handler.clipboard_load(*clipboard, ""), // TODO
+                    b"?" => self.handler.clipboard_load(*clipboard, terminator),
                     base64 => self.handler.clipboard_store(*clipboard, base64),
                 }
             }
 
             // Reset color number `color` to themed color.
-            [b"104", params @ ..] => {
+            [b"104", indices @ ..] => {
                 // Reset all color indexes when no parameters are given.
-                if params.is_empty() {
+                if indices.is_empty() {
                     for i in 0..256 {
                         self.handler.reset_color(i);
                     }
@@ -366,7 +396,7 @@ impl<H: Handler> Executor for HandlerExecutor<'_, H> {
                 }
 
                 // Reset color indexes given as parameters.
-                for param in params {
+                for param in indices {
                     match parse_number(param) {
                         Some(index) => self.handler.reset_color(index as usize),
                         None => unhandled!(),
@@ -397,8 +427,8 @@ impl<H: Handler> Executor for HandlerExecutor<'_, H> {
         }
 
         match (byte, intermediates) {
-            (b'0', [index]) => {
-                let Ok(index): Result<CharsetIndex, ()> = (*index).try_into() else {
+            (b'0', [index, ..]) => {
+                let Ok(index) = CharsetIndex::try_from(*index) else {
                     unhandled!();
                     return;
                 };
@@ -406,8 +436,8 @@ impl<H: Handler> Executor for HandlerExecutor<'_, H> {
                 self.handler
                     .configure_charset(index, Charset::SpecialCharacterAndLineDrawing);
             }
-            (b'B', [index]) => {
-                let Ok(index): Result<CharsetIndex, ()> = (*index).try_into() else {
+            (b'B', [index, ..]) => {
+                let Ok(index) = CharsetIndex::try_from(*index) else {
                     unhandled!();
                     return;
                 };
@@ -419,10 +449,15 @@ impl<H: Handler> Executor for HandlerExecutor<'_, H> {
                 self.handler.linefeed();
                 self.handler.carriage_return();
             }
+            (b'H', []) => self.handler.set_horizontal_tabstop(),
+            (b'M', []) => self.handler.reverse_index(),
             (b'Z', []) => self.handler.identify_terminal(None),
             (b'c', []) => self.handler.reset_state(),
             (b'7', []) => self.handler.save_cursor_position(),
+            (b'8', [b'#']) => self.handler.decaln(),
             (b'8', []) => self.handler.restore_cursor_position(),
+            (b'=', []) => self.handler.set_keypad_application_mode(),
+            (b'>', []) => self.handler.unset_keypad_application_mode(),
 
             // String terminator, do nothing (parser handles as string terminator).
             (b'\\', []) => (),
@@ -449,20 +484,18 @@ impl<H: Handler> Executor for HandlerExecutor<'_, H> {
             return;
         }
 
-        let handler = &mut self.handler;
         let mut params_iter = params.as_slice().iter();
-        let mut next_param_or = |default: u16| match params_iter.next() {
-            Some(param) => match param.as_slice().first() {
-                Some(subparam) if *subparam != 0 => *subparam,
-                _ => default,
-            },
+        let handler = &mut self.handler;
+
+        let mut next_param_or = |default: Subparam| match params_iter.next().map(Param::as_slice) {
+            Some(&[subparam, ..]) => subparam,
             _ => default,
         };
 
         match (action, intermediates) {
-            ('@', []) => self.handler.insert_blank(next_param_or(1).into()),
-            ('A', []) => self.handler.move_up(next_param_or(1).into()),
-            ('B' | 'e', []) => self.handler.move_down(next_param_or(1).into()),
+            ('@', []) => handler.insert_blank(next_param_or(1).into()),
+            ('A', []) => handler.move_up(next_param_or(1).into()),
+            ('B' | 'e', []) => handler.move_down(next_param_or(1).into()),
             ('b', []) => {
                 if let Some(c) = self.state.preceding_char {
                     for _ in 0..next_param_or(1) {
@@ -472,24 +505,37 @@ impl<H: Handler> Executor for HandlerExecutor<'_, H> {
                     debug!("tried to repeat with no preceding char");
                 }
             }
-            ('C' | 'a', []) => self.handler.move_forward(next_param_or(1).into()),
+            ('C' | 'a', []) => handler.move_forward(next_param_or(1).into()),
             ('c', intermediates) if next_param_or(0) == 0 => {
                 handler.identify_terminal(intermediates.first().map(|&i| i as char))
             }
-            ('D', []) => self.handler.move_backward(next_param_or(1).into()),
-            ('d', []) => self.handler.goto_line((next_param_or(1) - 1) as i32),
-            ('E', []) => self.handler.move_down(next_param_or(1).into()),
-            ('F', []) => self.handler.move_up(next_param_or(1).into()),
-            ('G' | '`', []) => self.handler.goto_col((next_param_or(1) - 1) as usize),
-            ('H' | 'f', []) => {
-                let line = next_param_or(1) - 1;
-                let column = next_param_or(1) - 1;
+            ('D', []) => handler.move_backward(next_param_or(1) as usize),
+            ('d', []) => handler.goto_line(next_param_or(1) as i32 - 1),
+            ('E', []) => handler.move_down_and_cr(next_param_or(1) as usize),
+            ('F', []) => handler.move_up_and_cr(next_param_or(1) as usize),
+            ('G' | '`', []) => handler.goto_col(next_param_or(1) as usize - 1),
+            ('W', [b'?']) if next_param_or(0) == 5 => handler.put_tab(8),
+            ('g', []) => {
+                let mode = match next_param_or(0) {
+                    0 => TabulationClearMode::Current,
+                    3 => TabulationClearMode::All,
+                    _ => {
+                        unhandled!();
+                        return;
+                    }
+                };
 
-                self.handler.goto(line as i32, column as usize);
+                handler.clear_tabs(mode);
+            }
+            ('H' | 'f', []) => {
+                let y = next_param_or(1) as i32;
+                let x = next_param_or(1) as usize;
+
+                handler.goto(y - 1, x - 1);
             }
             ('h', []) => {
-                for param in params_iter.map(|p| p.as_slice()[0]) {
-                    self.handler.set_mode(Mode::new(param));
+                for param in params_iter.map(|param| param[0]) {
+                    handler.set_mode(Mode::new(param));
                 }
             }
             ('h', [b'?']) => {
@@ -501,16 +547,20 @@ impl<H: Handler> Executor for HandlerExecutor<'_, H> {
                             .set_timeout(SYNC_UPDATE_TIMEOUT);
                     }
 
-                    self.handler.set_private_mode(PrivateMode::new(param));
+                    handler.set_private_mode(PrivateMode::new(param));
                 }
             }
+            ('I', []) => handler.move_forward_tabs(next_param_or(1)),
             ('J', []) => {
                 let mode = match next_param_or(0) {
                     0 => ScreenClearMode::Below,
                     1 => ScreenClearMode::Above,
                     2 => ScreenClearMode::All,
                     3 => ScreenClearMode::Saved,
-                    _ => return,
+                    _ => {
+                        unhandled!();
+                        return;
+                    }
                 };
 
                 self.handler.clear_screen(mode);
@@ -520,125 +570,261 @@ impl<H: Handler> Executor for HandlerExecutor<'_, H> {
                     0 => LineClearMode::Right,
                     1 => LineClearMode::Left,
                     2 => LineClearMode::All,
-                    _ => return,
+                    _ => {
+                        unhandled!();
+                        return;
+                    }
                 };
 
                 self.handler.clear_line(mode);
             }
-            ('M', []) => self.handler.delete_lines(next_param_or(1).into()),
+            ('k', [b' ']) => {
+                // SCP control.
+                let char_path = match next_param_or(0) {
+                    0 => ScpCharPath::Default,
+                    1 => ScpCharPath::LTR,
+                    2 => ScpCharPath::RTL,
+                    _ => {
+                        unhandled!();
+                        return;
+                    }
+                };
+
+                let update_mode = match next_param_or(0) {
+                    0 => ScpUpdateMode::ImplementationDependant,
+                    1 => ScpUpdateMode::DataToPresentation,
+                    2 => ScpUpdateMode::PresentationToData,
+                    _ => {
+                        unhandled!();
+                        return;
+                    }
+                };
+
+                handler.set_scp(char_path, update_mode);
+            }
+            ('L', []) => handler.insert_blank_lines(next_param_or(1) as usize),
+            ('l', []) => {
+                for param in params_iter.map(|param| param[0]) {
+                    handler.unset_mode(Mode::new(param));
+                }
+            }
+            ('l', [b'?']) => {
+                for param in params_iter.map(|param| param[0]) {
+                    handler.unset_private_mode(PrivateMode::new(param));
+                }
+            }
+            ('M', []) => handler.delete_lines(next_param_or(1) as usize),
             ('m', []) => {
                 if params.is_empty() {
-                    self.handler.terminal_attribute(Attribute::Reset);
+                    handler.terminal_attribute(Attribute::Reset);
                     return;
                 }
 
-                for attribtue in attrs_from_sgr_parameters(params) {
-                    self.handler.terminal_attribute(attribtue);
+                attrs_from_sgr_parameters(*handler, &mut params_iter);
+            }
+            ('m', [b'>']) => {
+                let mode = match (next_param_or(1) == 4).then(|| next_param_or(0)) {
+                    Some(0) => ModifyOtherKeys::Reset,
+                    Some(1) => ModifyOtherKeys::EnableExceptWellDefined,
+                    Some(2) => ModifyOtherKeys::EnableAll,
+                    _ => {
+                        unhandled!();
+                        return;
+                    }
+                };
+
+                handler.set_modify_other_keys(mode);
+            }
+            ('m', [b'?']) => {
+                let Some(next) = params_iter.next() else {
+                    unhandled!();
+                    return;
+                };
+
+                if next.as_slice() == [4] {
+                    handler.report_modify_other_keys();
                 }
             }
-            ('P', []) => self.handler.delete_chars(next_param_or(1).into()),
-            ('p', [b'$']) => self.handler.report_mode(Mode::new(next_param_or(0))),
-            ('u', [b'?']) => self.handler.report_keyboard_mode(),
-            ('u', []) => self.handler.restore_cursor_position(),
-            ('X', []) => self.handler.erase_chars(next_param_or(1).into()),
+            ('n', []) => handler.device_status(next_param_or(0) as usize),
+            ('P', []) => handler.delete_chars(next_param_or(1).into()),
+            ('p', [b'$']) => {
+                let mode = Mode::new(next_param_or(0));
 
-            // TODO: rest
+                handler.report_mode(mode)
+            }
+            ('p', [b'?', b'$']) => {
+                let mode = PrivateMode::new(next_param_or(0));
+
+                handler.report_private_mode(mode)
+            }
+            ('q', [b' ']) => {
+                let style_id = next_param_or(0);
+
+                let shape = match style_id {
+                    0 => None,
+                    1 | 2 => Some(CursorShape::Block),
+                    3 | 4 => Some(CursorShape::Underline),
+                    5 | 6 => Some(CursorShape::Beam),
+                    _ => {
+                        unhandled!();
+                        return;
+                    }
+                };
+
+                let blinking = style_id % 2 == 1;
+                let style = shape.map(|shape| CursorStyle { shape, blinking });
+
+                handler.set_cursor_style(style);
+            }
+            ('r', []) => {
+                let top = next_param_or(1) as usize;
+
+                let bottom = params_iter
+                    .next()
+                    .map(|p| p[0] as usize)
+                    .filter(|&p| p != 0);
+
+                handler.set_scrolling_region(top, bottom);
+            }
+            ('S', []) => handler.scroll_up(next_param_or(1) as usize),
+            ('s', []) => handler.save_cursor_position(),
+            ('T', []) => handler.scroll_down(next_param_or(1) as usize),
+            ('t', []) => match next_param_or(1) as usize {
+                14 => handler.text_area_size_pixels(),
+                18 => handler.text_area_size_chars(),
+                22 => handler.push_title(),
+                23 => handler.pop_title(),
+                _ => unhandled!(),
+            },
+            ('u', [b'?']) => handler.report_keyboard_mode(),
+            ('u', [b'=']) => {
+                let mode = KeyboardModes::from_bits_truncate(next_param_or(0) as u8);
+                let behavior = match next_param_or(1) {
+                    3 => KeyboardModesApplyBehavior::Difference,
+                    2 => KeyboardModesApplyBehavior::Union,
+                    // Default is replace.
+                    _ => KeyboardModesApplyBehavior::Replace,
+                };
+                handler.set_keyboard_mode(mode, behavior);
+            }
+            ('u', [b'>']) => {
+                let mode = KeyboardModes::from_bits_truncate(next_param_or(0) as u8);
+
+                handler.push_keyboard_mode(mode);
+            }
+            ('u', [b'<']) => {
+                // The default is 1.
+                handler.pop_keyboard_modes(next_param_or(1));
+            }
+            ('u', []) => handler.restore_cursor_position(),
+            ('X', []) => handler.erase_chars(next_param_or(1).into()),
+            ('Z', []) => handler.move_backward_tabs(next_param_or(1)),
+
             _ => unhandled!(),
         }
     }
 }
 
-fn attrs_from_sgr_parameters(params: &Params) -> Vec<Attribute> {
-    use Attribute::*;
-
-    let mut attributes = Vec::with_capacity(params.len());
-    let params = &mut params.as_slice().iter();
-
+#[inline]
+fn attrs_from_sgr_parameters<'a, H: Handler, I: Iterator<Item = &'a Param>>(
+    handler: &mut H,
+    params: &mut I,
+) {
     while let Some(param) = params.next() {
-        let attribute = match param.as_slice() {
-            [0] => Some(Reset),
-            [1] => Some(Bold),
-            [2] => Some(Dim),
-            [3] => Some(Italic),
-            [4, 0] => Some(CancelUnderline),
-            [4, 2] => Some(DoubleUnderline),
-            [4, 3] => Some(Undercurl),
-            [4, 4] => Some(DottedUnderline),
-            [4, 5] => Some(DashedUnderline),
-            [4, ..] => Some(Underline),
-            [5] => Some(BlinkSlow),
-            [6] => Some(BlinkFast),
-            [7] => Some(Reverse),
-            [8] => Some(Hidden),
-            [9] => Some(Strike),
-            [21] => Some(CancelBold),
-            [22] => Some(CancelBoldDim),
-            [23] => Some(CancelItalic),
-            [24] => Some(CancelUnderline),
-            [25] => Some(CancelBlink),
-            [27] => Some(CancelReverse),
-            [28] => Some(CancelHidden),
-            [29] => Some(CancelStrike),
-            [30] => Some(Foreground(Color::Named(NamedColor::Black))),
-            [31] => Some(Foreground(Color::Named(NamedColor::Red))),
-            [32] => Some(Foreground(Color::Named(NamedColor::Green))),
-            [33] => Some(Foreground(Color::Named(NamedColor::Yellow))),
-            [34] => Some(Foreground(Color::Named(NamedColor::Blue))),
-            [35] => Some(Foreground(Color::Named(NamedColor::Magenta))),
-            [36] => Some(Foreground(Color::Named(NamedColor::Cyan))),
-            [37] => Some(Foreground(Color::Named(NamedColor::White))),
+        let attr = match param.as_slice() {
+            [0] => Some(Attribute::Reset),
+            [1] => Some(Attribute::Bold),
+            [2] => Some(Attribute::Dim),
+            [3] => Some(Attribute::Italic),
+            [4, 0] => Some(Attribute::CancelUnderline),
+            [4, 2] => Some(Attribute::DoubleUnderline),
+            [4, 3] => Some(Attribute::Undercurl),
+            [4, 4] => Some(Attribute::DottedUnderline),
+            [4, 5] => Some(Attribute::DashedUnderline),
+            [4, ..] => Some(Attribute::Underline),
+            [5] => Some(Attribute::BlinkSlow),
+            [6] => Some(Attribute::BlinkFast),
+            [7] => Some(Attribute::Reverse),
+            [8] => Some(Attribute::Hidden),
+            [9] => Some(Attribute::Strike),
+            [21] => Some(Attribute::CancelBold),
+            [22] => Some(Attribute::CancelBoldDim),
+            [23] => Some(Attribute::CancelItalic),
+            [24] => Some(Attribute::CancelUnderline),
+            [25] => Some(Attribute::CancelBlink),
+            [27] => Some(Attribute::CancelReverse),
+            [28] => Some(Attribute::CancelHidden),
+            [29] => Some(Attribute::CancelStrike),
+            [30] => Some(Attribute::Foreground(Color::Named(NamedColor::Black))),
+            [31] => Some(Attribute::Foreground(Color::Named(NamedColor::Red))),
+            [32] => Some(Attribute::Foreground(Color::Named(NamedColor::Green))),
+            [33] => Some(Attribute::Foreground(Color::Named(NamedColor::Yellow))),
+            [34] => Some(Attribute::Foreground(Color::Named(NamedColor::Blue))),
+            [35] => Some(Attribute::Foreground(Color::Named(NamedColor::Magenta))),
+            [36] => Some(Attribute::Foreground(Color::Named(NamedColor::Cyan))),
+            [37] => Some(Attribute::Foreground(Color::Named(NamedColor::White))),
             [38] => {
                 let mut iter = params.map(|param| param[0]);
-                subparam_sgr_to_color(&mut iter).map(Foreground)
+                parse_sgr_color(&mut iter).map(Attribute::Foreground)
             }
-            [38, params @ ..] => handle_colon_rgb(params).map(Foreground),
-            [39] => Some(Foreground(Color::Named(NamedColor::Foreground))),
-            [40] => Some(Background(Color::Named(NamedColor::Black))),
-            [41] => Some(Background(Color::Named(NamedColor::Red))),
-            [42] => Some(Background(Color::Named(NamedColor::Green))),
-            [43] => Some(Background(Color::Named(NamedColor::Yellow))),
-            [44] => Some(Background(Color::Named(NamedColor::Blue))),
-            [45] => Some(Background(Color::Named(NamedColor::Magenta))),
-            [46] => Some(Background(Color::Named(NamedColor::Cyan))),
-            [47] => Some(Background(Color::Named(NamedColor::White))),
+            [38, params @ ..] => handle_colon_rgb(params).map(Attribute::Foreground),
+            [39] => Some(Attribute::Foreground(Color::Named(NamedColor::Foreground))),
+            [40] => Some(Attribute::Background(Color::Named(NamedColor::Black))),
+            [41] => Some(Attribute::Background(Color::Named(NamedColor::Red))),
+            [42] => Some(Attribute::Background(Color::Named(NamedColor::Green))),
+            [43] => Some(Attribute::Background(Color::Named(NamedColor::Yellow))),
+            [44] => Some(Attribute::Background(Color::Named(NamedColor::Blue))),
+            [45] => Some(Attribute::Background(Color::Named(NamedColor::Magenta))),
+            [46] => Some(Attribute::Background(Color::Named(NamedColor::Cyan))),
+            [47] => Some(Attribute::Background(Color::Named(NamedColor::White))),
             [48] => {
                 let mut iter = params.map(|param| param[0]);
-                subparam_sgr_to_color(&mut iter).map(Background)
+                parse_sgr_color(&mut iter).map(Attribute::Background)
             }
-            [48, params @ ..] => handle_colon_rgb(params).map(Background),
-            [49] => Some(Background(Color::Named(NamedColor::Background))),
+            [48, params @ ..] => handle_colon_rgb(params).map(Attribute::Background),
+            [49] => Some(Attribute::Background(Color::Named(NamedColor::Background))),
             [58] => {
                 let mut iter = params.map(|param| param[0]);
-                subparam_sgr_to_color(&mut iter).map(|color| UnderlineColor(Some(color)))
+                parse_sgr_color(&mut iter).map(|color| Attribute::UnderlineColor(Some(color)))
             }
-            [58, params @ ..] => handle_colon_rgb(params).map(|color| UnderlineColor(Some(color))),
-            [59] => Some(UnderlineColor(None)),
-            [90] => Some(Foreground(Color::Named(NamedColor::BrightBlack))),
-            [91] => Some(Foreground(Color::Named(NamedColor::BrightRed))),
-            [92] => Some(Foreground(Color::Named(NamedColor::BrightGreen))),
-            [93] => Some(Foreground(Color::Named(NamedColor::BrightYellow))),
-            [94] => Some(Foreground(Color::Named(NamedColor::BrightBlue))),
-            [95] => Some(Foreground(Color::Named(NamedColor::BrightMagenta))),
-            [96] => Some(Foreground(Color::Named(NamedColor::BrightCyan))),
-            [97] => Some(Foreground(Color::Named(NamedColor::BrightWhite))),
-            [100] => Some(Background(Color::Named(NamedColor::BrightBlack))),
-            [101] => Some(Background(Color::Named(NamedColor::BrightRed))),
-            [102] => Some(Background(Color::Named(NamedColor::BrightGreen))),
-            [103] => Some(Background(Color::Named(NamedColor::BrightYellow))),
-            [104] => Some(Background(Color::Named(NamedColor::BrightBlue))),
-            [105] => Some(Background(Color::Named(NamedColor::BrightMagenta))),
-            [106] => Some(Background(Color::Named(NamedColor::BrightCyan))),
-            [107] => Some(Background(Color::Named(NamedColor::BrightWhite))),
+            [58, params @ ..] => {
+                handle_colon_rgb(params).map(|color| Attribute::UnderlineColor(Some(color)))
+            }
+            [59] => Some(Attribute::UnderlineColor(None)),
+            [90] => Some(Attribute::Foreground(Color::Named(NamedColor::BrightBlack))),
+            [91] => Some(Attribute::Foreground(Color::Named(NamedColor::BrightRed))),
+            [92] => Some(Attribute::Foreground(Color::Named(NamedColor::BrightGreen))),
+            [93] => Some(Attribute::Foreground(Color::Named(
+                NamedColor::BrightYellow,
+            ))),
+            [94] => Some(Attribute::Foreground(Color::Named(NamedColor::BrightBlue))),
+            [95] => Some(Attribute::Foreground(Color::Named(
+                NamedColor::BrightMagenta,
+            ))),
+            [96] => Some(Attribute::Foreground(Color::Named(NamedColor::BrightCyan))),
+            [97] => Some(Attribute::Foreground(Color::Named(NamedColor::BrightWhite))),
+            [100] => Some(Attribute::Background(Color::Named(NamedColor::BrightBlack))),
+            [101] => Some(Attribute::Background(Color::Named(NamedColor::BrightRed))),
+            [102] => Some(Attribute::Background(Color::Named(NamedColor::BrightGreen))),
+            [103] => Some(Attribute::Background(Color::Named(
+                NamedColor::BrightYellow,
+            ))),
+            [104] => Some(Attribute::Background(Color::Named(NamedColor::BrightBlue))),
+            [105] => Some(Attribute::Background(Color::Named(
+                NamedColor::BrightMagenta,
+            ))),
+            [106] => Some(Attribute::Background(Color::Named(NamedColor::BrightCyan))),
+            [107] => Some(Attribute::Background(Color::Named(NamedColor::BrightWhite))),
             _ => None,
         };
 
-        if let Some(attribute) = attribute {
-            attributes.push(attribute);
+        match attr {
+            Some(attr) => handler.terminal_attribute(attr),
+            None => continue,
         }
     }
-
-    attributes
 }
+
 /// Handle colon separated rgb color escape sequence.
 fn handle_colon_rgb(params: &[u16]) -> Option<Color> {
     let rgb_start = if params.len() > 4 { 2 } else { 1 };
@@ -734,6 +920,19 @@ fn parse_number(input: &[u8]) -> Option<u8> {
             .and_then(|v| v.checked_add(digit as u8))?;
     }
     Some(num)
+}
+
+/// Parse a color specifier from list of attributes.
+fn parse_sgr_color<I: Iterator<Item = u16>>(params: &mut I) -> Option<Color> {
+    match params.next() {
+        Some(2) => Some(Color::Spec(Rgb {
+            r: u8::try_from(params.next()?).ok()?,
+            g: u8::try_from(params.next()?).ok()?,
+            b: u8::try_from(params.next()?).ok()?,
+        })),
+        Some(5) => Some(Color::Indexed(u8::try_from(params.next()?).ok()?)),
+        _ => None,
+    }
 }
 
 // Tests for parsing escape sequences.

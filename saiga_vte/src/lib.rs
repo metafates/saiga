@@ -251,9 +251,6 @@ impl Parser {
 
             let bytes_count = min(want_bytes_count, remaining_bytes.len());
 
-            // for i in 0..bytes_count {
-            //     self.utf8.push(remaining_bytes[i]);
-            // }
             for b in remaining_bytes.iter().take(bytes_count) {
                 self.utf8.push(*b);
             }
@@ -536,8 +533,8 @@ mod tests {
         static OSC_BYTES: &[u8] = &[
             0x1b, 0x5d, // Begin OSC
             b'2', b';', b'j', b'w', b'i', b'l', b'm', b'@', b'j', b'w', b'i', b'l', b'm', b'-',
-            b'd', b'e', b's', b'k', b':', b' ', b'~', b'/', b'c', b'o', b'd', b'e', b'/', b'a',
-            b'l', b'a', b'c', b'r', b'i', b't', b't', b'y', 0x9c, // End OSC
+            b'd', b'e', b's', b'k', b':', b' ', b'~', b'/', b'c', b'o', b'd', b'e', b'/', b's',
+            b'a', b'i', b'g', b'a', 0x9c, // End OSC
         ];
 
         #[test]
