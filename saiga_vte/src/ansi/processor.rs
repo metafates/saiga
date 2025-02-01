@@ -271,6 +271,7 @@ impl<H: Handler> Executor for HandlerExecutor<'_, H> {
         match params {
             // set window title
             [b"0" | b"2", title @ ..] => {
+                // FIXME: never triggered, probably something wrong with osc parsing
                 let title = title
                     .iter()
                     .flat_map(|x| simdutf8::basic::from_utf8(x))
