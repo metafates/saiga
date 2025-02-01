@@ -109,24 +109,25 @@ impl OscHandler {
     }
 
     pub fn put(&mut self, byte: u8) {
+        self.raw.push(byte);
+    }
+
+    fn put_param(&mut self) {
         let idx = self.raw.len();
 
-        if byte != param::PARAM_SEPARATOR {
-            self.raw.push(byte);
-            return;
-        }
+        let param_idx = self.params_num;
+        match param_idx {
+            // First param is special - 0 to current byte index.
+            0 => self.params[param_idx] = (0, idx),
 
-        // handle param separator
-
-        match self.params_num {
+            // Only process up to MAX_OSC_PARAMS.
             MAX_OSC_PARAMS => return,
 
-            0 => self.params[0] = (0, idx),
-
-            param_idx => {
+            // All other params depend on previous indexing.
+            _ => {
                 let prev = self.params[param_idx - 1];
-
-                self.params[param_idx] = (prev.1, idx)
+                let begin = prev.1;
+                self.params[param_idx] = (begin, idx);
             }
         }
 
@@ -134,25 +135,10 @@ impl OscHandler {
     }
 
     pub fn end<E: Executor>(&mut self, executor: &mut E, byte: u8) {
-        let idx = self.raw.len();
-
-        match self.params_num {
-            MAX_OSC_PARAMS => (),
-
-            0 => {
-                self.params[0] = (0, idx);
-                self.params_num += 1;
-            }
-
-            param_idx => {
-                let prev = self.params[param_idx - 1];
-
-                self.params[param_idx] = (prev.1, idx);
-                self.params_num += 1;
-            }
-        }
-
+        self.put_param();
         self.dispatch(executor, byte);
+        self.raw.clear();
+        self.params_num = 0;
     }
 
     pub fn dispatch<E: Executor>(&self, executor: &mut E, byte: u8) {
@@ -167,6 +153,7 @@ impl OscHandler {
         executor.osc_dispatch(params, byte == ansi::c0::BEL)
     }
 }
+
 #[derive(Default)]
 pub struct Parser {
     state: State,
