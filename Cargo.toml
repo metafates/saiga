@@ -6,4 +6,5 @@ members = [
     "iced_saiga",
     "saiga_vte",
     "saiga_frontend",
+    "saiga_input",
 ]

@@ -12,6 +12,7 @@ use iced_core::{
 };
 use iced_graphics::geometry::{Path, Text};
 use saiga_backend::term::{cell, TermMode};
+use saiga_vte::ansi::handler::CursorShape;
 
 use crate::{
     backend::BackendCommand,
@@ -203,7 +204,8 @@ impl Widget<Event, Theme, iced::Renderer> for TermView<'_> {
         let layout_offset_x = layout.position().x;
         let layout_offset_y = layout.position().y;
 
-        let show_cursor = content.term_mode.contains(TermMode::SHOW_CURSOR);
+        let show_cursor = content.term_mode.contains(TermMode::SHOW_CURSOR)
+            && content.cursor_style.shape != CursorShape::Hidden;
 
         let geom = self.term.cache.draw(renderer, viewport.size(), |frame| {
             for indexed in content.grid.display_iter() {
@@ -240,8 +242,15 @@ impl Widget<Event, Theme, iced::Renderer> for TermView<'_> {
                 // Handle cursor rendering
                 if show_cursor && content.grid.cursor.point == indexed.point {
                     let cursor_color = self.term.theme.get_color(content.cursor.fg);
-                    let cursor_rect = Path::rectangle(Point::new(x, y), cell_size);
-                    frame.fill(&cursor_rect, cursor_color);
+
+                    let cursor_path = match content.cursor_style.shape {
+                        CursorShape::Beam => {
+                            Path::line(Point::new(x, y), Point::new(x + 1.0, y + cell_size.height))
+                        }
+                        _ => Path::rectangle(Point::new(x, y), cell_size),
+                    };
+
+                    frame.fill(&cursor_path, cursor_color);
                 }
 
                 // Draw text

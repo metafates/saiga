@@ -12,7 +12,7 @@ use unicode_width::UnicodeWidthChar;
 
 use crate::event::{Event, EventListener};
 use crate::grid::{Dimensions, Grid, GridIterator, Scroll};
-use crate::index::{self, Boundary, Column, Direction, Line, Point, Side};
+use crate::index::{self, Boundary, Column, Direction, Line, Point};
 use crate::selection::{Selection, SelectionRange, SelectionType};
 use crate::term::cell::{Cell, Flags, LineLength};
 use crate::term::color::Colors;
@@ -24,7 +24,6 @@ use saiga_vte::ansi::handler::{
 
 pub mod cell;
 pub mod color;
-pub mod search;
 
 /// Minimum number of columns.
 ///
@@ -541,12 +540,6 @@ impl<T> Term<T> {
                 res += self
                     .line_to_string(end.line, start.column..end.column, true)
                     .trim_end();
-            }
-            Some(Selection {
-                ty: SelectionType::Lines,
-                ..
-            }) => {
-                res = self.bounds_to_string(start, end) + "\n";
             }
             _ => {
                 res = self.bounds_to_string(start, end);
@@ -2495,13 +2488,11 @@ pub mod test {
 mod tests {
     use super::*;
 
-    use std::mem;
-
     use crate::event::VoidListener;
-    use crate::grid::{Grid, Scroll};
+    use crate::grid::Scroll;
     use crate::index::{Column, Point, Side};
     use crate::selection::{Selection, SelectionType};
-    use crate::term::cell::{Cell, Flags};
+    use crate::term::cell::Flags;
     use crate::term::test::TermSize;
     use saiga_vte::ansi::handler::{self as ansi, Charset, CharsetIndex, Handler};
 
@@ -2622,87 +2613,6 @@ mod tests {
             term.selection_to_string(),
             Some(String::from(" aaa  aaa\""))
         );
-    }
-
-    #[test]
-    fn semantic_selection_works() {
-        let size = TermSize::new(5, 3);
-        let mut term = Term::new(Config::default(), &size, VoidListener);
-        let mut grid: Grid<Cell> = Grid::new(3, 5, 0);
-        for i in 0..5 {
-            for j in 0..2 {
-                grid[Line(j)][Column(i)].c = 'a';
-            }
-        }
-        grid[Line(0)][Column(0)].c = '"';
-        grid[Line(0)][Column(3)].c = '"';
-        grid[Line(1)][Column(2)].c = '"';
-        grid[Line(0)][Column(4)].flags.insert(Flags::WRAPLINE);
-
-        let mut escape_chars = String::from("\"");
-
-        mem::swap(&mut term.grid, &mut grid);
-        mem::swap(&mut term.config.semantic_escape_chars, &mut escape_chars);
-
-        {
-            term.selection = Some(Selection::new(
-                SelectionType::Semantic,
-                Point {
-                    line: Line(0),
-                    column: Column(1),
-                },
-                Side::Left,
-            ));
-            assert_eq!(term.selection_to_string(), Some(String::from("aa")));
-        }
-
-        {
-            term.selection = Some(Selection::new(
-                SelectionType::Semantic,
-                Point {
-                    line: Line(0),
-                    column: Column(4),
-                },
-                Side::Left,
-            ));
-            assert_eq!(term.selection_to_string(), Some(String::from("aaa")));
-        }
-
-        {
-            term.selection = Some(Selection::new(
-                SelectionType::Semantic,
-                Point {
-                    line: Line(1),
-                    column: Column(1),
-                },
-                Side::Left,
-            ));
-            assert_eq!(term.selection_to_string(), Some(String::from("aaa")));
-        }
-    }
-
-    #[test]
-    fn line_selection_works() {
-        let size = TermSize::new(5, 1);
-        let mut term = Term::new(Config::default(), &size, VoidListener);
-        let mut grid: Grid<Cell> = Grid::new(1, 5, 0);
-        for i in 0..5 {
-            grid[Line(0)][Column(i)].c = 'a';
-        }
-        grid[Line(0)][Column(0)].c = '"';
-        grid[Line(0)][Column(3)].c = '"';
-
-        mem::swap(&mut term.grid, &mut grid);
-
-        term.selection = Some(Selection::new(
-            SelectionType::Lines,
-            Point {
-                line: Line(0),
-                column: Column(3),
-            },
-            Side::Left,
-        ));
-        assert_eq!(term.selection_to_string(), Some(String::from("\"aa\"a\n")));
     }
 
     #[test]

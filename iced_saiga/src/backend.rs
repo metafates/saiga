@@ -9,6 +9,7 @@ use saiga_backend::{
     term::{self, cell::Cell, Term, TermMode},
     tty,
 };
+use saiga_vte::ansi::handler::CursorStyle;
 use std::{borrow::Cow, io, sync::Arc};
 use tokio::sync::mpsc;
 
@@ -95,6 +96,7 @@ impl Backend {
             selectable_range: None,
             cursor: cursor.clone(),
             term_mode: *term.mode(),
+            cursor_style: term.cursor_style(),
             term_size,
         };
 
@@ -215,6 +217,7 @@ impl Backend {
         self.last_content.cursor = cursor.clone();
         self.last_content.term_mode = *terminal.mode();
         self.last_content.term_size = self.size;
+        self.last_content.cursor_style = terminal.cursor_style();
     }
 
     pub fn renderable_content(&self) -> &RenderableContent {
@@ -228,6 +231,7 @@ pub struct RenderableContent {
     pub cursor: Cell,
     pub term_mode: TermMode,
     pub term_size: TermSize,
+    pub cursor_style: CursorStyle,
 }
 
 #[derive(Clone, Copy, Debug)]
