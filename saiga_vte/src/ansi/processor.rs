@@ -488,7 +488,7 @@ impl<H: Handler> Executor for HandlerExecutor<'_, H> {
         let handler = &mut self.handler;
 
         let mut next_param_or = |default: Subparam| match params_iter.next().map(Param::as_slice) {
-            Some(&[subparam, ..]) => subparam,
+            Some(&[subparam, ..]) if subparam != 0 => subparam,
             _ => default,
         };
 

@@ -82,10 +82,6 @@ impl Intermediates {
     }
 
     pub fn push(&mut self, byte: u8) {
-        if self.is_full() {
-            return;
-        }
-
         self.array[self.index] = byte;
         self.index += 1;
     }
