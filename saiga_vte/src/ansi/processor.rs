@@ -735,3 +735,356 @@ fn parse_number(input: &[u8]) -> Option<u8> {
     }
     Some(num)
 }
+
+// Tests for parsing escape sequences.
+//
+// Byte sequences used in these tests are recording of pty stdout.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct MockHandler {
+        index: CharsetIndex,
+        charset: Charset,
+        attr: Option<Attribute>,
+        identity_reported: bool,
+        color: Option<Rgb>,
+        reset_colors: Vec<usize>,
+    }
+
+    impl Handler for MockHandler {
+        fn terminal_attribute(&mut self, attr: Attribute) {
+            self.attr = Some(attr);
+        }
+
+        fn configure_charset(&mut self, index: CharsetIndex, charset: Charset) {
+            self.index = index;
+            self.charset = charset;
+        }
+
+        fn set_active_charset(&mut self, index: CharsetIndex) {
+            self.index = index;
+        }
+
+        fn identify_terminal(&mut self, _intermediate: Option<char>) {
+            self.identity_reported = true;
+        }
+
+        fn reset_state(&mut self) {
+            *self = Self::default();
+        }
+
+        fn set_color(&mut self, _: usize, c: Rgb) {
+            self.color = Some(c);
+        }
+
+        fn reset_color(&mut self, index: usize) {
+            self.reset_colors.push(index)
+        }
+    }
+
+    impl Default for MockHandler {
+        fn default() -> MockHandler {
+            MockHandler {
+                index: CharsetIndex::G0,
+                charset: Charset::Ascii,
+                attr: None,
+                identity_reported: false,
+                color: None,
+                reset_colors: Vec::new(),
+            }
+        }
+    }
+
+    #[test]
+    fn parse_control_attribute() {
+        static BYTES: &[u8] = &[0x1b, b'[', b'1', b'm'];
+
+        let mut parser = Processor::new();
+        let mut handler = MockHandler::default();
+
+        parser.advance(&mut handler, BYTES);
+
+        assert_eq!(handler.attr, Some(Attribute::Bold));
+    }
+
+    #[test]
+    fn parse_terminal_identity_csi() {
+        let bytes: &[u8] = &[0x1b, b'[', b'1', b'c'];
+
+        let mut parser = Processor::new();
+        let mut handler = MockHandler::default();
+
+        parser.advance(&mut handler, bytes);
+
+        assert!(!handler.identity_reported);
+        handler.reset_state();
+
+        let bytes: &[u8] = &[0x1b, b'[', b'c'];
+
+        parser.advance(&mut handler, bytes);
+
+        assert!(handler.identity_reported);
+        handler.reset_state();
+
+        let bytes: &[u8] = &[0x1b, b'[', b'0', b'c'];
+
+        parser.advance(&mut handler, bytes);
+
+        assert!(handler.identity_reported);
+    }
+
+    #[test]
+    fn parse_terminal_identity_esc() {
+        let bytes: &[u8] = &[0x1b, b'Z'];
+
+        let mut parser = Processor::new();
+        let mut handler = MockHandler::default();
+
+        parser.advance(&mut handler, bytes);
+
+        assert!(handler.identity_reported);
+        handler.reset_state();
+
+        let bytes: &[u8] = &[0x1b, b'#', b'Z'];
+
+        let mut parser = Processor::new();
+        let mut handler = MockHandler::default();
+
+        parser.advance(&mut handler, bytes);
+
+        assert!(!handler.identity_reported);
+        handler.reset_state();
+    }
+
+    #[test]
+    fn parse_truecolor_attr() {
+        static BYTES: &[u8] = &[
+            0x1b, b'[', b'3', b'8', b';', b'2', b';', b'1', b'2', b'8', b';', b'6', b'6', b';',
+            b'2', b'5', b'5', b'm',
+        ];
+
+        let mut parser = Processor::new();
+        let mut handler = MockHandler::default();
+
+        parser.advance(&mut handler, BYTES);
+
+        let spec = Rgb {
+            r: 128,
+            g: 66,
+            b: 255,
+        };
+
+        assert_eq!(handler.attr, Some(Attribute::Foreground(Color::Spec(spec))));
+    }
+
+    /// No exactly a test; useful for debugging.
+    #[test]
+    fn parse_zsh_startup() {
+        static BYTES: &[u8] = &[
+            0x1b, b'[', b'1', b'm', 0x1b, b'[', b'7', b'm', b'%', 0x1b, b'[', b'2', b'7', b'm',
+            0x1b, b'[', b'1', b'm', 0x1b, b'[', b'0', b'm', b' ', b' ', b' ', b' ', b' ', b' ',
+            b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ',
+            b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ',
+            b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ',
+            b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ',
+            b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ', b' ',
+            b' ', b' ', b' ', b'\r', b' ', b'\r', b'\r', 0x1b, b'[', b'0', b'm', 0x1b, b'[', b'2',
+            b'7', b'm', 0x1b, b'[', b'2', b'4', b'm', 0x1b, b'[', b'J', b'j', b'w', b'i', b'l',
+            b'm', b'@', b'j', b'w', b'i', b'l', b'm', b'-', b'd', b'e', b's', b'k', b' ', 0x1b,
+            b'[', b'0', b'1', b';', b'3', b'2', b'm', 0xe2, 0x9e, 0x9c, b' ', 0x1b, b'[', b'0',
+            b'1', b';', b'3', b'2', b'm', b' ', 0x1b, b'[', b'3', b'6', b'm', b'~', b'/', b'c',
+            b'o', b'd', b'e',
+        ];
+
+        let mut handler = MockHandler::default();
+        let mut parser = Processor::new();
+
+        parser.advance(&mut handler, BYTES);
+    }
+
+    #[test]
+    fn parse_designate_g0_as_line_drawing() {
+        static BYTES: &[u8] = &[0x1b, b'(', b'0'];
+        let mut parser = Processor::new();
+        let mut handler = MockHandler::default();
+
+        parser.advance(&mut handler, BYTES);
+
+        assert_eq!(handler.index, CharsetIndex::G0);
+        assert_eq!(handler.charset, Charset::SpecialCharacterAndLineDrawing);
+    }
+
+    #[test]
+    fn parse_designate_g1_as_line_drawing_and_invoke() {
+        static BYTES: &[u8] = &[0x1b, b')', b'0', 0x0e];
+        let mut parser = Processor::new();
+        let mut handler = MockHandler::default();
+
+        parser.advance(&mut handler, &BYTES[..3]);
+
+        assert_eq!(handler.index, CharsetIndex::G1);
+        assert_eq!(handler.charset, Charset::SpecialCharacterAndLineDrawing);
+
+        let mut handler = MockHandler::default();
+        parser.advance(&mut handler, &[BYTES[3]]);
+
+        assert_eq!(handler.index, CharsetIndex::G1);
+    }
+
+    #[test]
+    fn parse_valid_rgb_colors() {
+        assert_eq!(
+            xparse_color(b"rgb:f/e/d"),
+            Some(Rgb {
+                r: 0xff,
+                g: 0xee,
+                b: 0xdd
+            })
+        );
+        assert_eq!(
+            xparse_color(b"rgb:11/aa/ff"),
+            Some(Rgb {
+                r: 0x11,
+                g: 0xaa,
+                b: 0xff
+            })
+        );
+        assert_eq!(
+            xparse_color(b"rgb:f/ed1/cb23"),
+            Some(Rgb {
+                r: 0xff,
+                g: 0xec,
+                b: 0xca
+            })
+        );
+        assert_eq!(
+            xparse_color(b"rgb:ffff/0/0"),
+            Some(Rgb {
+                r: 0xff,
+                g: 0x0,
+                b: 0x0
+            })
+        );
+    }
+
+    #[test]
+    fn parse_valid_legacy_rgb_colors() {
+        assert_eq!(
+            xparse_color(b"#1af"),
+            Some(Rgb {
+                r: 0x10,
+                g: 0xa0,
+                b: 0xf0
+            })
+        );
+        assert_eq!(
+            xparse_color(b"#11aaff"),
+            Some(Rgb {
+                r: 0x11,
+                g: 0xaa,
+                b: 0xff
+            })
+        );
+        assert_eq!(
+            xparse_color(b"#110aa0ff0"),
+            Some(Rgb {
+                r: 0x11,
+                g: 0xaa,
+                b: 0xff
+            })
+        );
+        assert_eq!(
+            xparse_color(b"#1100aa00ff00"),
+            Some(Rgb {
+                r: 0x11,
+                g: 0xaa,
+                b: 0xff
+            })
+        );
+    }
+
+    #[test]
+    fn parse_invalid_rgb_colors() {
+        assert_eq!(xparse_color(b"rgb:0//"), None);
+        assert_eq!(xparse_color(b"rgb://///"), None);
+    }
+
+    #[test]
+    fn parse_invalid_legacy_rgb_colors() {
+        assert_eq!(xparse_color(b"#"), None);
+        assert_eq!(xparse_color(b"#f"), None);
+    }
+
+    #[test]
+    fn parse_invalid_number() {
+        assert_eq!(parse_number(b"1abc"), None);
+    }
+
+    #[test]
+    fn parse_valid_number() {
+        assert_eq!(parse_number(b"123"), Some(123));
+    }
+
+    #[test]
+    fn parse_number_too_large() {
+        assert_eq!(parse_number(b"321"), None);
+    }
+
+    #[test]
+    fn parse_osc4_set_color() {
+        let bytes: &[u8] = b"\x1b]4;0;#fff\x1b\\";
+
+        let mut parser = Processor::new();
+        let mut handler = MockHandler::default();
+
+        parser.advance(&mut handler, bytes);
+
+        assert_eq!(
+            handler.color,
+            Some(Rgb {
+                r: 0xf0,
+                g: 0xf0,
+                b: 0xf0
+            })
+        );
+    }
+
+    #[test]
+    fn parse_osc104_reset_color() {
+        let bytes: &[u8] = b"\x1b]104;1;\x1b\\";
+
+        let mut parser = Processor::new();
+        let mut handler = MockHandler::default();
+
+        parser.advance(&mut handler, bytes);
+
+        assert_eq!(handler.reset_colors, vec![1]);
+    }
+
+    #[test]
+    fn parse_osc104_reset_all_colors() {
+        let bytes: &[u8] = b"\x1b]104;\x1b\\";
+
+        let mut parser = Processor::new();
+        let mut handler = MockHandler::default();
+
+        parser.advance(&mut handler, bytes);
+
+        let expected: Vec<usize> = (0..256).collect();
+        assert_eq!(handler.reset_colors, expected);
+    }
+
+    #[test]
+    fn parse_osc104_reset_all_colors_no_semicolon() {
+        let bytes: &[u8] = b"\x1b]104\x1b\\";
+
+        let mut parser = Processor::new();
+        let mut handler = MockHandler::default();
+
+        parser.advance(&mut handler, bytes);
+
+        let expected: Vec<usize> = (0..256).collect();
+        assert_eq!(handler.reset_colors, expected);
+    }
+}
