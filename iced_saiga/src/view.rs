@@ -203,6 +203,8 @@ impl Widget<Event, Theme, iced::Renderer> for TermView<'_> {
         let layout_offset_x = layout.position().x;
         let layout_offset_y = layout.position().y;
 
+        let show_cursor = content.term_mode.contains(TermMode::SHOW_CURSOR);
+
         let geom = self.term.cache.draw(renderer, viewport.size(), |frame| {
             for indexed in content.grid.display_iter() {
                 let x = layout_offset_x + (indexed.point.column.0 as f32 * cell_width);
@@ -236,7 +238,7 @@ impl Widget<Event, Theme, iced::Renderer> for TermView<'_> {
                 frame.fill(&background, bg);
 
                 // Handle cursor rendering
-                if content.grid.cursor.point == indexed.point {
+                if show_cursor && content.grid.cursor.point == indexed.point {
                     let cursor_color = self.term.theme.get_color(content.cursor.fg);
                     let cursor_rect = Path::rectangle(Point::new(x, y), cell_size);
                     frame.fill(&cursor_rect, cursor_color);
