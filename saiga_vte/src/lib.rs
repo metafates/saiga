@@ -395,7 +395,7 @@ impl Parser {
                         self.subparam = self.subparam.saturating_mul(10);
                         self.subparam = self.subparam.saturating_add((byte - b'0').into());
                     }
-                }
+                };
             }
             CsiDispatch => {
                 if self.params.is_full() {

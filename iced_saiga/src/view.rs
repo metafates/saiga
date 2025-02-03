@@ -244,9 +244,13 @@ impl Widget<Event, Theme, iced::Renderer> for TermView<'_> {
                     let cursor_color = self.term.theme.get_color(content.cursor.fg);
 
                     let cursor_path = match content.cursor_style.shape {
-                        CursorShape::Beam => {
-                            Path::line(Point::new(x, y), Point::new(x + 1.0, y + cell_size.height))
-                        }
+                        CursorShape::Beam => Path::rectangle(
+                            Point::new(x, y),
+                            Size {
+                                width: cell_size.width * 0.2,
+                                height: cell_size.height,
+                            },
+                        ),
                         _ => Path::rectangle(Point::new(x, y), cell_size),
                     };
 
@@ -257,6 +261,7 @@ impl Widget<Event, Theme, iced::Renderer> for TermView<'_> {
                 if indexed.c != ' ' && indexed.c != '\t' {
                     if content.grid.cursor.point == indexed.point
                         && content.term_mode.contains(TermMode::APP_CURSOR)
+                        && content.cursor_style.shape == CursorShape::Block
                     {
                         fg = bg;
                     }

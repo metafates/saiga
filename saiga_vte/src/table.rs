@@ -173,7 +173,7 @@ pub fn change_state(state: State, byte: u8) -> Option<(State, Option<Action>)> {
             0x7F => Some((Anywhere, Some(Ignore))),
 
             0x3C..=0x3F => Some((CsiIgnore, None)),
-            0x20..=0x2F => Some((CsiIntermediate, None)),
+            0x20..=0x2F => Some((CsiIntermediate, Some(Collect))),
             0x40..=0x7E => Some((Ground, Some(CsiDispatch))),
 
             _ => None,

@@ -949,6 +949,7 @@ mod tests {
         identity_reported: bool,
         color: Option<Rgb>,
         reset_colors: Vec<usize>,
+        cursor_style: Option<CursorStyle>,
     }
 
     impl Handler for MockHandler {
@@ -980,6 +981,10 @@ mod tests {
         fn reset_color(&mut self, index: usize) {
             self.reset_colors.push(index)
         }
+
+        fn set_cursor_style(&mut self, style: Option<CursorStyle>) {
+            self.cursor_style = style;
+        }
     }
 
     impl Default for MockHandler {
@@ -991,6 +996,7 @@ mod tests {
                 identity_reported: false,
                 color: None,
                 reset_colors: Vec::new(),
+                cursor_style: None,
             }
         }
     }
@@ -1228,6 +1234,24 @@ mod tests {
     #[test]
     fn parse_number_too_large() {
         assert_eq!(parse_number(b"321"), None);
+    }
+
+    #[test]
+    fn set_cursor_style() {
+        let bytes: &[u8] = b"\x1b[5 q";
+
+        let mut parser = Processor::new();
+        let mut handler = MockHandler::default();
+
+        parser.advance(&mut handler, bytes);
+
+        assert_eq!(
+            handler.cursor_style,
+            Some(CursorStyle {
+                shape: CursorShape::Beam,
+                blinking: true
+            })
+        )
     }
 
     #[test]
