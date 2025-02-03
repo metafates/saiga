@@ -283,7 +283,7 @@ impl<H: Handler> Executor for HandlerExecutor<'_, H> {
             }
 
             // Change color number
-            [b"4", params @ ..] if !params.is_empty() && params.len() % 2 != 0 => {
+            [b"4", params @ ..] if !params.is_empty() && params.len() % 2 == 0 => {
                 for chunk in params.chunks(2) {
                     let index = match parse_number(chunk[0]) {
                         Some(index) => index,
@@ -387,7 +387,7 @@ impl<H: Handler> Executor for HandlerExecutor<'_, H> {
             // Reset color number `color` to themed color.
             [b"104", indices @ ..] => {
                 // Reset all color indexes when no parameters are given.
-                if indices.is_empty() {
+                if indices.is_empty() || indices[0].is_empty() {
                     for i in 0..256 {
                         self.handler.reset_color(i);
                     }

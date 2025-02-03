@@ -57,7 +57,7 @@ pub fn from_utf8(utf8: &[u8]) -> Result<&str, Utf8Error> {
 }
 
 pub fn into_char(utf8: &[u8]) -> char {
-    match simdutf8::basic::from_utf8(utf8) {
+    match from_utf8(utf8) {
         Ok(s) => s.chars().next().expect("No character found"),
         Err(_) => char::REPLACEMENT_CHARACTER,
     }

@@ -345,7 +345,7 @@ impl Parser {
             State::OscString => {
                 self.execute_action(executor, Action::OscEnd, byte);
             }
-            _ => (),
+            _ => {}
         }
     }
 
