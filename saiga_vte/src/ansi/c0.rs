@@ -1,4 +1,9 @@
 //! C0 set of 7-bit control characters (from ANSI X3.4-1977).
+use std::{
+    collections::HashSet,
+    simd::{cmp::SimdPartialEq, num::SimdUint, u8x16, Simd},
+    sync::LazyLock,
+};
 
 /// Null filler, terminal should ignore this character.
 pub const NUL: u8 = 0x00;
@@ -67,28 +72,31 @@ pub const US: u8 = 0x1F;
 /// Delete, should be ignored by terminal.
 pub const DEL: u8 = 0x7f;
 
-pub const ALL: [u8; 33] = [
-    NUL, SOH, STX, ETX, EOT, ENQ, ACK, BEL, BS, HT, LF, VT, FF, CR, SO, SI, DLE, XON, DC2, XOFF,
-    DC4, NAK, SYN, ETB, CAN, EM, SUB, ESC, FS, GS, RS, US, DEL,
-];
+const IN_USE: [u8; 11] = [NUL, BEL, BS, HT, LF, VT, FF, CR, SO, SI, ESC];
 
-use std::{
-    collections::HashSet,
-    simd::{cmp::SimdPartialEq, num::SimdUint, u8x16, Simd},
-    sync::LazyLock,
-};
+const LANES: usize = 16;
 
-static C0_SET: LazyLock<HashSet<u8>> = LazyLock::new(|| ALL.into_iter().collect());
-
-static C0_SPLATS: LazyLock<[Simd<u8, 16>; 33]> = LazyLock::new(|| ALL.map(u8x16::splat));
+static C0_SET: LazyLock<HashSet<u8>> = LazyLock::new(|| IN_USE.into_iter().collect());
 
 pub fn first_index_of_c0(haystack: &[u8]) -> Option<usize> {
-    const LANES: usize = 16;
-
     const INDICES: Simd<u8, LANES> =
         u8x16::from_array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+
     const NULLS: Simd<u8, LANES> = u8x16::from_array([u8::MAX; LANES]);
-    // const NULLS: Simd<u8, LANES> = u8x16::splat(u8::MAX); // non const
+
+    const C0_SPLATS: [Simd<u8, 16>; 11] = [
+        u8x16::from_array([NUL; LANES]),
+        u8x16::from_array([BEL; LANES]),
+        u8x16::from_array([BS; LANES]),
+        u8x16::from_array([HT; LANES]),
+        u8x16::from_array([LF; LANES]),
+        u8x16::from_array([VT; LANES]),
+        u8x16::from_array([FF; LANES]),
+        u8x16::from_array([CR; LANES]),
+        u8x16::from_array([SO; LANES]),
+        u8x16::from_array([SI; LANES]),
+        u8x16::from_array([ESC; LANES]),
+    ];
 
     let mut pos = 0;
     let mut left = haystack.len();
@@ -142,19 +150,27 @@ mod bench {
 
     extern crate test;
 
-    const SAMPLE: &[u8] = b"this is a test for benchmarking processor\x07\x1b[38:2:255:0:255;1m\xD0\x96\xE6\xBC\xA2\xE6\xBC";
+    const SAMPLE: &[u8] = include_bytes!("test.ansi");
 
     #[bench]
     fn first_index_of_scalar(b: &mut test::Bencher) {
         b.iter(|| {
-            first_index_of_c0_scalar(SAMPLE);
+            let mut i = 0;
+
+            while let Some(idx) = first_index_of_c0_scalar(&SAMPLE[i..]) {
+                i += idx + 1
+            }
         })
     }
 
     #[bench]
     fn first_index_of_simd(b: &mut test::Bencher) {
         b.iter(|| {
-            first_index_of_c0(SAMPLE);
+            let mut i = 0;
+
+            while let Some(idx) = first_index_of_c0(&SAMPLE[i..]) {
+                i += idx + 1
+            }
         })
     }
 }

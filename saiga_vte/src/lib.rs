@@ -109,6 +109,7 @@ impl OscHandler {
 
         if byte == PARAM_SEPARATOR {
             let param_idx = self.params_num;
+
             match param_idx {
                 // Only process up to MAX_OSC_PARAMS
                 MAX_OSC_PARAMS => return,
@@ -998,42 +999,25 @@ mod bench {
         }
     }
 
-    fn get_input() -> Vec<u8> {
-        let mut v = Vec::new();
-
-        for c in "ABCDEFGHIJKLMNOPQRSTUVWXYZ".chars() {
-            for i in 1..=10 {
-                for j in 1..=10 {
-                    v.extend(format!("\x1B[{i};{j}H{c}").as_bytes());
-                    v.extend(r#"some ascii with unicode ݖݗݘݙݚݛݜݝݞݟݠݡ"#.to_string().as_bytes());
-                }
-            }
-        }
-
-        v
-    }
+    const INPUT: &[u8] = include_bytes!("ansi/test.ansi");
 
     #[bench]
     fn advance_batch(b: &mut test::Bencher) {
-        let input = get_input();
         let mut parser = Parser::new();
         let mut executor = NopExecutor::default();
 
         b.iter(|| {
-            for chunk in input.chunks(16) {
-                parser.advance(&mut executor, chunk);
-            }
+            parser.advance(&mut executor, INPUT);
         })
     }
 
     #[bench]
     fn advance_sequential(b: &mut test::Bencher) {
-        let input = get_input();
         let mut parser = Parser::new();
         let mut executor = NopExecutor::default();
 
         b.iter(|| {
-            for byte in input.iter() {
+            for byte in INPUT {
                 parser.advance(&mut executor, &[*byte]);
             }
         })
