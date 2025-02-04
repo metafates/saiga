@@ -128,6 +128,11 @@ impl Backend {
                 }
                 Event::Exit => Action::Shutdown,
                 Event::Title(title) => Action::ChangeTitle(title),
+                Event::PtyWrite(text) => {
+                    self.write(text.into_bytes());
+
+                    Action::Ignore
+                }
                 _ => Action::Ignore,
             },
             BackendCommand::Write(input) => {

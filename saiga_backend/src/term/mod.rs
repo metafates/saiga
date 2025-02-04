@@ -1227,11 +1227,13 @@ impl<T: EventListener> Handler for Term<T> {
         match intermediate {
             None => {
                 trace!("Reporting primary device attributes");
+
                 let text = "\x1b[?6c".to_string();
                 self.event_proxy.send_event(Event::PtyWrite(text));
             }
             Some('>') => {
                 trace!("Reporting secondary device attributes");
+
                 let version = version_number(env!("CARGO_PKG_VERSION"));
                 let text = format!("\x1b[>0;{version};1c");
                 self.event_proxy.send_event(Event::PtyWrite(text));
