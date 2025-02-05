@@ -4,5 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-iced_saiga = { path = "../iced_saiga" }
-iced = "0.13.1"
+glyphon = "0.8.0"
+wgpu = "24.0.1"
+saiga_backend = { path = "../saiga_backend" }
+saiga_vte = { path = "../saiga_vte" }
+winit = "0.30.8"
+tokio = "1.43.0"
+bytemuck = { version = "1.21.0", features = ["derive"] }
+pollster = "0.4.0"

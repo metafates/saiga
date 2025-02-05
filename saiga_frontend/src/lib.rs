@@ -1,125 +1,154 @@
-use std::ops::Add as _;
+pub mod backend;
+pub mod color;
+pub mod display;
+pub mod font;
+pub mod settings;
+pub mod size;
+pub mod term_font;
+pub mod terminal;
+pub mod theme;
 
-use iced::advanced::graphics::core::Element;
-use iced::font::{Family, Stretch, Weight};
-use iced::keyboard::Modifiers;
-use iced::widget::container;
-use iced::{Font, Length, Size, Subscription, Task, Theme, window};
-use iced_saiga::{Command, TermMode, TermView};
+use std::{error::Error, sync::Arc};
 
-pub fn run() -> iced::Result {
-    iced::application(App::title, App::update, App::view)
-        .antialiasing(false)
-        .window_size(Size {
-            width: 1280.0,
-            height: 720.0,
-        })
-        .subscription(App::subscription)
-        .run_with(App::new)
+use backend::Backend;
+use display::Display;
+use pollster::FutureExt;
+use saiga_backend::{event::Event, grid::GridCell};
+use settings::{BackendSettings, Settings};
+use size::Size;
+use terminal::Terminal;
+use tokio::{runtime, sync::mpsc};
+use winit::{
+    application::ApplicationHandler,
+    event::WindowEvent,
+    event_loop::{EventLoop, EventLoopProxy},
+    window::Window,
+};
+
+pub fn run() -> Result<(), Box<dyn Error>> {
+    let runtime = tokio::runtime::Runtime::new()?;
+
+    let settings = Settings {
+        backend: BackendSettings {
+            shell: "fish".to_string(),
+        },
+        ..Default::default()
+    };
+
+    runtime.block_on(async {
+        let event_loop = EventLoop::with_user_event().build()?;
+        let mut app = App::new(settings, event_loop.create_proxy());
+
+        event_loop.run_app(&mut app)
+    })?;
+
+    Ok(())
 }
 
-#[derive(Debug, Clone)]
-pub enum Event {
-    Terminal(iced_saiga::Event),
-    FontSize(f32),
+struct State<'a> {
+    terminal: Terminal,
+    display: Display<'a>,
 }
 
-struct App {
-    title: String,
-    term: iced_saiga::Terminal,
-    font_settings: iced_saiga::settings::FontSettings,
-}
+impl State<'_> {
+    pub async fn new(settings: Settings, sender: mpsc::Sender<Event>, window: Arc<Window>) -> Self {
+        let display = Display::new(window).await;
 
-impl App {
-    fn new() -> (Self, Task<Event>) {
-        let system_shell = std::env::var("SHELL")
-            .expect("SHELL variable is not defined")
-            .to_string();
+        let mut font_system = glyphon::FontSystem::new();
 
-        let term_id = 0;
-        let term_settings = iced_saiga::settings::Settings {
-            font: iced_saiga::settings::FontSettings {
-                size: 17.0,
-                font_type: Font {
-                    weight: Weight::Normal,
-                    family: Family::Name("JetBrainsMono Nerd Font Mono"),
-                    stretch: Stretch::Normal,
-                    ..Default::default()
-                },
-                ..Default::default()
-            },
-            theme: iced_saiga::settings::ThemeSettings::default(),
-            backend: iced_saiga::settings::BackendSettings {
-                shell: system_shell.to_string(),
-            },
-        };
+        let backend =
+            Backend::new(1, sender, settings.backend.clone(), Size::new(0.0, 0.0)).unwrap();
 
-        let font_settings = term_settings.font.clone();
+        let terminal = Terminal::new(&mut font_system, backend, settings);
 
-        (
-            Self {
-                title: String::from("Saiga"),
-                term: iced_saiga::Terminal::new(term_id, term_settings),
-                font_settings,
-            },
-            Task::none(),
-        )
+        Self { terminal, display }
     }
 
-    fn title(&self) -> String {
-        self.title.clone()
+    pub fn render(&mut self) {
+        self.display.render(&mut self.terminal);
     }
 
-    fn subscription(&self) -> Subscription<Event> {
-        // TODO: make it work somehow. Currently, terminal captures it itself, so not working
-        let key_subscription = iced::keyboard::on_key_press(|key, m| match key {
-            iced::keyboard::Key::Character(c) if m.contains(Modifiers::COMMAND) => match c.as_str()
-            {
-                "=" => Some(Event::FontSize(2.0)),
-                "-" => Some(Event::FontSize(-2.0)),
-                _ => None,
-            },
-            _ => None,
+    pub fn request_redraw(&self) {
+        self.display.window().request_redraw();
+    }
+}
+
+struct App<'a> {
+    settings: Settings,
+    state: Option<State<'a>>,
+    event_loop_proxy: EventLoopProxy<Event>,
+}
+
+impl App<'_> {
+    pub fn new(settings: Settings, proxy: EventLoopProxy<Event>) -> Self {
+        Self {
+            settings,
+            state: None,
+            event_loop_proxy: proxy,
+        }
+    }
+}
+
+impl ApplicationHandler<Event> for App<'_> {
+    fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+        let attrs = Window::default_attributes().with_title("Saiga");
+
+        let window = event_loop
+            .create_window(attrs)
+            .expect("window must be created");
+
+        let (sender, mut receiver) = mpsc::channel(100);
+        let state = State::new(self.settings.clone(), sender, Arc::new(window)).block_on();
+
+        let proxy = self.event_loop_proxy.clone();
+
+        tokio::spawn(async move {
+            while let Some(event) = receiver.recv().await {
+                proxy.send_event(event).unwrap();
+            }
         });
 
-        let term_subscription = iced_saiga::Subscription::new(self.term.id);
-        let term_event_stream = term_subscription.event_stream();
-
-        Subscription::batch(vec![
-            key_subscription,
-            Subscription::run_with_id(self.term.id, term_event_stream).map(Event::Terminal),
-        ])
+        self.state = Some(state)
     }
 
-    fn update(&mut self, event: Event) -> Task<Event> {
+    fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: Event) {
+        let Some(ref mut state) = self.state else {
+            return;
+        };
+
         match event {
-            Event::Terminal(iced_saiga::Event::CommandReceived(_, cmd)) => {
-                match self.term.update(cmd) {
-                    iced_saiga::actions::Action::Shutdown => {
-                        window::get_latest().and_then(window::close)
-                    }
-                    iced_saiga::actions::Action::ChangeTitle(title) => {
-                        self.title = title;
-
-                        Task::none()
-                    }
-                    _ => Task::none(),
-                }
+            Event::Wakeup => {
+                state.terminal.backend.sync();
+                state.request_redraw();
             }
-            Event::FontSize(delta) => {
-                self.font_settings.size = self.font_settings.size.add(delta).max(5.0);
-                self.term
-                    .update(iced_saiga::Command::ChangeFont(self.font_settings.clone()));
-
-                Task::none()
+            Event::Title(title) => {
+                state.display.window().set_title(&title);
             }
+            Event::Exit => event_loop.exit(),
+            _ => println!("{event:?}"),
         }
     }
 
-    fn view(&self) -> Element<Event, Theme, iced::Renderer> {
-        container(TermView::show(&self.term).map(Event::Terminal))
-            .width(Length::Fill)
-            .height(Length::Fill)
-            .into()
+    fn window_event(
+        &mut self,
+        event_loop: &winit::event_loop::ActiveEventLoop,
+        _window_id: winit::window::WindowId,
+        event: winit::event::WindowEvent,
+    ) {
+        let Some(ref mut state) = self.state else {
+            return;
+        };
+
+        match event {
+            WindowEvent::CloseRequested => {
+                event_loop.exit();
+            }
+            WindowEvent::RedrawRequested => {
+                state.render();
+
+                // state.request_redraw();
+            }
+            _ => {}
+        }
     }
 }
