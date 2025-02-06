@@ -8,7 +8,7 @@ pub mod term_font;
 pub mod terminal;
 pub mod theme;
 
-use std::{error::Error, sync::Arc};
+use std::{borrow::Cow, error::Error, sync::Arc};
 
 use backend::Backend;
 use display::Display;
@@ -22,8 +22,9 @@ use tokio::{runtime, sync::mpsc};
 use winit::{
     application::ApplicationHandler,
     dpi::{LogicalSize, PhysicalSize},
-    event::WindowEvent,
+    event::{ElementState, KeyEvent, WindowEvent},
     event_loop::{EventLoop, EventLoopProxy},
+    keyboard::KeyCode,
     window::Window,
 };
 
@@ -95,6 +96,33 @@ impl State<'_> {
         self.terminal.resize(Some(size), None);
     }
 
+    pub fn handle_key_key(&self, event: KeyEvent) {
+        let KeyEvent {
+            state: ElementState::Pressed,
+            physical_key,
+            text: Some(text),
+            ..
+        } = event
+        else {
+            return;
+        };
+
+        // TODO: use saiga_input for it
+        let mut text = text.chars().as_str().to_string();
+
+        match physical_key {
+            winit::keyboard::PhysicalKey::Code(key_code) => match key_code {
+                KeyCode::Backspace => {
+                    text = "\x08".to_string();
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+
+        self.terminal.write(text.into_bytes());
+    }
+
     pub fn request_redraw(&self) {
         self.display.window().request_redraw();
     }
@@ -154,6 +182,7 @@ impl ApplicationHandler<Event> for App<'_> {
             Event::Title(title) => {
                 state.display.window().set_title(&title);
             }
+            Event::PtyWrite(payload) => state.terminal.write(payload.into_bytes()),
             Event::Exit => event_loop.exit(),
             _ => println!("{event:?}"),
         }
@@ -177,6 +206,7 @@ impl ApplicationHandler<Event> for App<'_> {
             WindowEvent::RedrawRequested => {
                 state.render();
             }
+            WindowEvent::KeyboardInput { event, .. } => state.handle_key_key(event),
             _ => {}
         }
     }

@@ -1,3 +1,5 @@
+use std::u8;
+
 /// A color in the `sRGB` color space.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Color {
@@ -61,5 +63,16 @@ impl From<Color> for wgpu::Color {
 impl From<wgpu::Color> for Color {
     fn from(c: wgpu::Color) -> Self {
         Self::new(c.r as f32, c.g as f32, c.b as f32, c.a as f32)
+    }
+}
+
+impl From<Color> for glyphon::Color {
+    fn from(c: Color) -> Self {
+        let r = c.r * u8::MAX as f32;
+        let g = c.g * u8::MAX as f32;
+        let b = c.b * u8::MAX as f32;
+        let a = c.a * u8::MAX as f32;
+
+        Self::rgba(r as u8, g as u8, b as u8, a as u8)
     }
 }

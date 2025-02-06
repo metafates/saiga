@@ -77,21 +77,19 @@ impl Brush {
             buffers.push((buf, glyph));
         }
 
-        let text_areas = buffers.iter().map(|(buf, glyph)| {
-            TextArea {
-                buffer: buf,
-                left: glyph.left * scale_factor as f32,
-                top: glyph.top * scale_factor as f32,
-                scale: scale_factor as f32,
-                bounds: TextBounds {
-                    left: 0,
-                    top: 0,
-                    right: Size::<f32>::INFINITY.width as i32,
-                    bottom: Size::<f32>::INFINITY.height as i32,
-                },
-                default_color: glyphon::Color::rgb(255, 255, 255), // TODO: use actual color
-                custom_glyphs: &[],
-            }
+        let text_areas = buffers.iter().map(|(buf, glyph)| TextArea {
+            buffer: buf,
+            left: glyph.left * scale_factor as f32,
+            top: glyph.top * scale_factor as f32,
+            scale: scale_factor as f32,
+            bounds: TextBounds {
+                left: 0,
+                top: 0,
+                right: Size::<f32>::INFINITY.width as i32,
+                bottom: Size::<f32>::INFINITY.height as i32,
+            },
+            default_color: glyph.color.into(),
+            custom_glyphs: &[],
         });
 
         self.text_renderer

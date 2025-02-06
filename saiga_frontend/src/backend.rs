@@ -3,21 +3,27 @@ use std::{borrow::Cow, io, sync::Arc};
 use saiga_backend::{
     event::{Event, EventListener, Notify as _, OnResize as _, WindowSize},
     event_loop::{EventLoop, Notifier},
-    grid::{Dimensions, Grid},
-    index::{Column, Line},
+    grid::{Cursor, Dimensions, Grid},
+    index::{Column, Line, Point},
     sync::FairMutex,
-    term::{self, Term, cell::Cell},
+    term::{self, Term, TermMode, cell::Cell},
     tty,
 };
 use tokio::sync::mpsc;
 
 use crate::{settings::BackendSettings, size::Size};
 
+pub struct Frame {
+    pub grid: Grid<Cell>,
+    pub mode: TermMode,
+    pub cursor: Point,
+}
+
 pub struct Backend {
     term: Arc<FairMutex<Term<EventProxy>>>,
     size: TermSize,
     notifier: Notifier,
-    prev_grid: Grid<Cell>,
+    prev_frame: Frame,
 }
 
 impl Backend {
@@ -45,7 +51,11 @@ impl Backend {
 
         let term = Term::new(config, &term_size, event_proxy.clone());
 
-        let prev_grid = term.grid().clone();
+        let prev_frame = Frame {
+            grid: term.grid().clone(),
+            mode: term.mode().clone(),
+            cursor: term.grid().cursor.point.clone(),
+        };
 
         let term = Arc::new(FairMutex::new(term));
         let pty_event_loop = EventLoop::new(term.clone(), event_proxy, pty, false)?;
@@ -56,14 +66,14 @@ impl Backend {
 
         Ok(Self {
             term,
-            prev_grid,
+            prev_frame,
             size: term_size,
             notifier,
         })
     }
 
-    pub fn prev_grid(&self) -> &Grid<Cell> {
-        &self.prev_grid
+    pub fn prev_frame(&self) -> &Frame {
+        &self.prev_frame
     }
 
     pub fn size(&self) -> &TermSize {
@@ -71,7 +81,13 @@ impl Backend {
     }
 
     pub fn sync(&mut self) {
-        self.prev_grid = self.term.lock().grid().clone();
+        let term = self.term.lock();
+
+        self.prev_frame = Frame {
+            grid: term.grid().clone(),
+            mode: term.mode().clone(),
+            cursor: term.grid().cursor.point.clone(),
+        };
     }
 
     pub fn resize(&mut self, surface_size: Option<Size<f32>>, font_measure: Option<Size<f32>>) {

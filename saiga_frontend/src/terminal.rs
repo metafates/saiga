@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use saiga_backend::event::Event;
 use tokio::sync::mpsc;
 
@@ -38,6 +40,14 @@ impl Terminal {
         .unwrap();
 
         self.backend = Some(backend);
+    }
+
+    pub fn write<I: Into<Cow<'static, [u8]>>>(&self, input: I) {
+        let Some(ref backend) = self.backend else {
+            return;
+        };
+
+        backend.write(input)
     }
 
     pub fn resize(&mut self, surface_size: Option<Size<f32>>, font_measure: Option<Size<f32>>) {

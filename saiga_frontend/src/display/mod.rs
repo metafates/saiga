@@ -1,7 +1,7 @@
 pub mod brush;
 pub mod context;
 
-use std::sync::Arc;
+use std::{mem, sync::Arc};
 
 use brush::{Glyph, Rect};
 use saiga_backend::grid::Dimensions;
@@ -94,13 +94,13 @@ impl Display<'_> {
             return;
         };
 
-        let scale_factor = self.window().scale_factor();
         let term_size = backend.size();
 
         let cell_width = term_size.cell_width as f32;
         let cell_height = term_size.cell_height as f32;
 
-        let grid = backend.prev_grid();
+        let frame = backend.prev_frame();
+        let grid = &frame.grid;
 
         let count = grid.columns() * grid.screen_lines();
 
@@ -115,8 +115,12 @@ impl Display<'_> {
             let x = column.0 as f32 * cell_width;
             let y = (line.0 as f32 + grid.display_offset() as f32) * cell_height;
 
-            let fg = terminal.theme.get_color(indexed.fg);
-            let bg = terminal.theme.get_color(indexed.bg);
+            let mut fg = terminal.theme.get_color(indexed.fg);
+            let mut bg = terminal.theme.get_color(indexed.bg);
+
+            if frame.cursor == indexed.point {
+                mem::swap(&mut fg, &mut bg);
+            }
 
             let rect = Rect {
                 position: [x, y],
@@ -124,15 +128,18 @@ impl Display<'_> {
                 size: [cell_width, cell_height],
             };
 
-            let glyph = Glyph {
-                value: indexed.c.to_string(),
-                color: fg,
-                top: y,
-                left: x,
-            };
-
             rects.push(rect);
-            glyphs.push(glyph);
+
+            if indexed.c != ' ' || indexed.c != '\t' {
+                let glyph = Glyph {
+                    value: indexed.c.to_string(),
+                    color: fg,
+                    top: y,
+                    left: x,
+                };
+
+                glyphs.push(glyph);
+            }
         }
 
         self.rect_brush.render(&mut self.context, rpass, rects);
