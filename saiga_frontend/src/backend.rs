@@ -74,15 +74,12 @@ impl Backend {
         self.prev_grid = self.term.lock().grid().clone();
     }
 
-    pub fn resize(
-        &mut self,
-        terminal: &mut Term<EventProxy>,
-        layout_size: Option<Size<f32>>,
-        font_measure: Option<Size<f32>>,
-    ) {
-        if let Some(size) = layout_size {
-            self.size.layout_height = size.height;
-            self.size.layout_width = size.width;
+    pub fn resize(&mut self, surface_size: Option<Size<f32>>, font_measure: Option<Size<f32>>) {
+        let mut term = self.term.lock();
+
+        if let Some(size) = surface_size {
+            self.size.surface_height = size.height;
+            self.size.surface_width = size.width;
         };
 
         if let Some(size) = font_measure {
@@ -90,14 +87,17 @@ impl Backend {
             self.size.cell_width = size.width as u16;
         }
 
-        let lines = (self.size.layout_height / self.size.cell_height as f32).floor() as u16;
-        let cols = (self.size.layout_width / self.size.cell_width as f32).floor() as u16;
+        let lines = (self.size.surface_height / self.size.cell_height as f32).floor() as u16;
+        let cols = (self.size.surface_width / self.size.cell_width as f32).floor() as u16;
+
+        println!("{:?}", self.size);
+
         if lines > 0 && cols > 0 {
             self.size.num_lines = lines;
             self.size.num_cols = cols;
             self.notifier.on_resize(self.size.into());
 
-            terminal.resize(self.size);
+            term.resize(self.size);
         }
     }
 
@@ -113,8 +113,8 @@ pub struct TermSize {
 
     num_cols: u16,
     num_lines: u16,
-    layout_width: f32,
-    layout_height: f32,
+    surface_width: f32,
+    surface_height: f32,
 }
 
 impl Default for TermSize {
@@ -124,8 +124,8 @@ impl Default for TermSize {
             cell_height: 1,
             num_cols: 80,
             num_lines: 50,
-            layout_width: 80.0,
-            layout_height: 50.0,
+            surface_width: 80.0,
+            surface_height: 50.0,
         }
     }
 }

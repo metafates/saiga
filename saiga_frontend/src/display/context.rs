@@ -73,7 +73,9 @@ impl Context<'_> {
             });
     }
 
-    pub fn render(terminal: &mut Terminal) {}
+    pub fn sync_size(&mut self) {
+        self.configure_surface();
+    }
 }
 
 async fn request_device(adapter: &wgpu::Adapter) -> (wgpu::Device, wgpu::Queue) {

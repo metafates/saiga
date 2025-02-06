@@ -12,9 +12,10 @@ use std::{error::Error, sync::Arc};
 
 use backend::Backend;
 use display::Display;
+use font::{Family, Font};
 use pollster::FutureExt;
 use saiga_backend::{event::Event, grid::GridCell};
-use settings::{BackendSettings, Settings};
+use settings::{BackendSettings, FontSettings, Settings};
 use size::Size;
 use terminal::Terminal;
 use tokio::{runtime, sync::mpsc};
@@ -29,6 +30,14 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     let runtime = tokio::runtime::Runtime::new()?;
 
     let settings = Settings {
+        font: FontSettings {
+            size: 16.0,
+            font_type: Font {
+                family: Family::Monospace,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
         backend: BackendSettings {
             shell: "fish".to_string(),
         },
@@ -56,16 +65,24 @@ impl State<'_> {
 
         let mut font_system = glyphon::FontSystem::new();
 
-        let backend =
-            Backend::new(1, sender, settings.backend.clone(), Size::new(0.0, 0.0)).unwrap();
-
-        let terminal = Terminal::new(&mut font_system, backend, settings);
+        let mut terminal = Terminal::new(1, &mut font_system, settings);
+        terminal.init_backend(sender);
 
         Self { terminal, display }
     }
 
     pub fn render(&mut self) {
         self.display.render(&mut self.terminal);
+    }
+
+    pub fn sync_size(&mut self) {
+        self.display.sync_size();
+
+        let size = self.display.window().inner_size();
+
+        let size = Size::new(size.width as f32, size.height as f32);
+
+        self.terminal.resize(Some(size), None);
     }
 
     pub fn request_redraw(&self) {
@@ -118,7 +135,10 @@ impl ApplicationHandler<Event> for App<'_> {
 
         match event {
             Event::Wakeup => {
-                state.terminal.backend.sync();
+                if let Some(ref mut backend) = state.terminal.backend {
+                    backend.sync();
+                }
+
                 state.request_redraw();
             }
             Event::Title(title) => {
@@ -143,10 +163,9 @@ impl ApplicationHandler<Event> for App<'_> {
             WindowEvent::CloseRequested => {
                 event_loop.exit();
             }
+            WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => state.sync_size(),
             WindowEvent::RedrawRequested => {
                 state.render();
-
-                // state.request_redraw();
             }
             _ => {}
         }

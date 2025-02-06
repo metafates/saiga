@@ -41,6 +41,12 @@ impl Display<'_> {
         }
     }
 
+    pub fn sync_size(&mut self) {
+        self.context.sync_size();
+
+        self.rect_brush.resize(&mut self.context);
+    }
+
     fn render_surface(&mut self, surface: wgpu::SurfaceTexture, terminal: &mut Terminal) {
         let mut encoder = self
             .context
@@ -79,13 +85,16 @@ impl Display<'_> {
     }
 
     fn render_rects(&mut self, rpass: &mut RenderPass<'_>, terminal: &mut Terminal) {
-        let term_size = terminal.backend.size();
+        let Some(ref backend) = terminal.backend else {
+            return;
+        };
+
+        let term_size = backend.size();
 
         let cell_width = term_size.cell_width as f32;
         let cell_height = term_size.cell_height as f32;
-        let cell_size = Size::new(cell_width, cell_height);
 
-        let grid = terminal.backend.prev_grid();
+        let grid = backend.prev_grid();
 
         let rects: Vec<_> = grid
             .display_iter()
@@ -102,7 +111,7 @@ impl Display<'_> {
                 Rect {
                     position: [x, y],
                     color: [color.r, color.g, color.b, color.a],
-                    size: [cell_size.width, cell_size.height],
+                    size: [cell_width, cell_height],
                 }
             })
             .collect();
