@@ -3,26 +3,30 @@ pub mod context;
 
 use std::sync::Arc;
 
-use brush::Rect;
+use brush::{Glyph, Rect};
+use saiga_backend::grid::Dimensions;
 use saiga_vte::ansi::handler::{Color, NamedColor};
 use wgpu::RenderPass;
 use winit::window::Window;
 
-use crate::{size::Size, terminal::Terminal};
+use crate::terminal::Terminal;
 
 pub struct Display<'a> {
     pub context: context::Context<'a>,
     pub rect_brush: brush::RectBrush,
+    pub glyph_brush: brush::GlyphBrush,
 }
 
 impl Display<'_> {
     pub async fn new(window: Arc<Window>) -> Self {
         let ctx = context::Context::new(window).await;
         let rect_brush = brush::RectBrush::new(&ctx);
+        let glyph_brush = brush::GlyphBrush::new(&ctx);
 
         Self {
             context: ctx,
             rect_brush,
+            glyph_brush,
         }
     }
 
@@ -45,6 +49,7 @@ impl Display<'_> {
         self.context.sync_size();
 
         self.rect_brush.resize(&mut self.context);
+        self.glyph_brush.resize(&self.context);
     }
 
     fn render_surface(&mut self, surface: wgpu::SurfaceTexture, terminal: &mut Terminal) {
@@ -89,6 +94,7 @@ impl Display<'_> {
             return;
         };
 
+        let scale_factor = self.window().scale_factor();
         let term_size = backend.size();
 
         let cell_width = term_size.cell_width as f32;
@@ -96,26 +102,41 @@ impl Display<'_> {
 
         let grid = backend.prev_grid();
 
-        let rects: Vec<_> = grid
-            .display_iter()
-            .map(|indexed| {
-                let point = indexed.point;
+        let count = grid.columns() * grid.screen_lines();
 
-                let (line, column) = (point.line, point.column);
+        let mut rects = Vec::with_capacity(count);
+        let mut glyphs = Vec::with_capacity(count);
 
-                let x = column.0 as f32 * cell_width;
-                let y = (line.0 as f32 + grid.display_offset() as f32) * cell_height;
+        for indexed in grid.display_iter() {
+            let point = indexed.point;
 
-                let color = terminal.theme.get_color(indexed.bg);
+            let (line, column) = (point.line, point.column);
 
-                Rect {
-                    position: [x, y],
-                    color: [color.r, color.g, color.b, color.a],
-                    size: [cell_width, cell_height],
-                }
-            })
-            .collect();
+            let x = column.0 as f32 * cell_width;
+            let y = (line.0 as f32 + grid.display_offset() as f32) * cell_height;
+
+            let fg = terminal.theme.get_color(indexed.fg);
+            let bg = terminal.theme.get_color(indexed.bg);
+
+            let rect = Rect {
+                position: [x, y],
+                color: [bg.r, bg.g, bg.b, bg.a],
+                size: [cell_width, cell_height],
+            };
+
+            let glyph = Glyph {
+                value: indexed.c.to_string(),
+                color: fg,
+                top: y,
+                left: x,
+            };
+
+            rects.push(rect);
+            glyphs.push(glyph);
+        }
 
         self.rect_brush.render(&mut self.context, rpass, rects);
+        self.glyph_brush
+            .render(&mut self.context, &terminal.font, rpass, glyphs);
     }
 }

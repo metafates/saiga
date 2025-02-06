@@ -32,8 +32,10 @@ fn measure_font(
     scale_factor: f32,
     font_type: Font,
 ) -> Size<f32> {
-    let mut buffer =
-        glyphon::Buffer::new(font_system, glyphon::Metrics::new(font_size, scale_factor));
+    let mut buffer = glyphon::Buffer::new(
+        font_system,
+        glyphon::Metrics::relative(font_size, scale_factor),
+    );
 
     let bounds = Size::<f32>::INFINITY;
     buffer.set_size(font_system, Some(bounds.width), Some(bounds.height));

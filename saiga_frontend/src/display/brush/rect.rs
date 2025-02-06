@@ -87,8 +87,8 @@ impl Brush {
 
         const RECT_VERTICES: [Vertex; 4] = [
             Vertex::new([0.0, 0.0]),
-            Vertex::new([0.5, 0.0]),
-            Vertex::new([0.5, 1.0]),
+            Vertex::new([1.0, 0.0]),
+            Vertex::new([1.0, 1.0]),
             Vertex::new([0.0, 1.0]),
         ];
 

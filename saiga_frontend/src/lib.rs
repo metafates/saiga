@@ -21,6 +21,7 @@ use terminal::Terminal;
 use tokio::{runtime, sync::mpsc};
 use winit::{
     application::ApplicationHandler,
+    dpi::{LogicalSize, PhysicalSize},
     event::WindowEvent,
     event_loop::{EventLoop, EventLoopProxy},
     window::Window,
@@ -33,7 +34,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         font: FontSettings {
             size: 16.0,
             font_type: Font {
-                family: Family::Monospace,
+                family: Family::Name("JetBrainsMono Nerd Font Mono"),
                 ..Default::default()
             },
             ..Default::default()
@@ -61,11 +62,9 @@ struct State<'a> {
 
 impl State<'_> {
     pub async fn new(settings: Settings, sender: mpsc::Sender<Event>, window: Arc<Window>) -> Self {
-        let display = Display::new(window).await;
+        let mut display = Display::new(window).await;
 
-        let mut font_system = glyphon::FontSystem::new();
-
-        let mut terminal = Terminal::new(1, &mut font_system, settings);
+        let mut terminal = Terminal::new(1, &mut display.context.font_system, settings);
         terminal.init_backend(sender);
 
         Self { terminal, display }
@@ -80,7 +79,18 @@ impl State<'_> {
 
         let size = self.display.window().inner_size();
 
-        let size = Size::new(size.width as f32, size.height as f32);
+        let size = size.to_logical(self.display.window().scale_factor());
+
+        let size = Size::new(size.width, size.height);
+
+        if let Some(ref backend) = self.terminal.backend {
+            let term_size = backend.size();
+
+            let resize_increment = LogicalSize::new(term_size.cell_width, term_size.cell_height);
+            self.display
+                .window()
+                .set_resize_increments(Some(resize_increment));
+        }
 
         self.terminal.resize(Some(size), None);
     }

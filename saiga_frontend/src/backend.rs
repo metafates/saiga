@@ -90,8 +90,6 @@ impl Backend {
         let lines = (self.size.surface_height / self.size.cell_height as f32).floor() as u16;
         let cols = (self.size.surface_width / self.size.cell_width as f32).floor() as u16;
 
-        println!("{:?}", self.size);
-
         if lines > 0 && cols > 0 {
             self.size.num_lines = lines;
             self.size.num_cols = cols;

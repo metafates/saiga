@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
+use glyphon::FontSystem;
 use winit::window::Window;
-
-use crate::{size::Size, terminal::Terminal};
 
 pub struct Context<'a> {
     pub window: Arc<Window>,
@@ -13,6 +12,7 @@ pub struct Context<'a> {
     pub format: wgpu::TextureFormat,
     pub alpha_mode: wgpu::CompositeAlphaMode,
     pub color_mode: glyphon::ColorMode,
+    pub font_system: FontSystem,
 }
 
 impl Context<'_> {
@@ -50,6 +50,7 @@ impl Context<'_> {
             format,
             alpha_mode,
             color_mode,
+            font_system: FontSystem::new(),
         };
 
         display.configure_surface();
