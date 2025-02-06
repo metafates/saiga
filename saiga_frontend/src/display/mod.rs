@@ -82,14 +82,14 @@ impl Display<'_> {
                 depth_stencil_attachment: None,
             });
 
-            self.render_rects(&mut rpass, terminal);
+            self.render_cells(&mut rpass, terminal);
         }
 
         self.context.queue.submit(Some(encoder.finish()));
         surface.present();
     }
 
-    fn render_rects(&mut self, rpass: &mut RenderPass<'_>, terminal: &mut Terminal) {
+    fn render_cells(&mut self, rpass: &mut RenderPass<'_>, terminal: &mut Terminal) {
         let Some(ref backend) = terminal.backend else {
             return;
         };

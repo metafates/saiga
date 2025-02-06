@@ -53,8 +53,8 @@ impl Backend {
 
         let prev_frame = Frame {
             grid: term.grid().clone(),
-            mode: term.mode().clone(),
-            cursor: term.grid().cursor.point.clone(),
+            mode: *term.mode(),
+            cursor: term.grid().cursor.point,
         };
 
         let term = Arc::new(FairMutex::new(term));
@@ -85,8 +85,8 @@ impl Backend {
 
         self.prev_frame = Frame {
             grid: term.grid().clone(),
-            mode: term.mode().clone(),
-            cursor: term.grid().cursor.point.clone(),
+            mode: *term.mode(),
+            cursor: term.grid().cursor.point,
         };
     }
 

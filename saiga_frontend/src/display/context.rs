@@ -25,7 +25,7 @@ impl Context<'_> {
         });
 
         let color_mode = glyphon::ColorMode::Accurate;
-        let format = wgpu::TextureFormat::Bgra8UnormSrgb;
+        let format = wgpu::TextureFormat::Rgba16Float;
 
         let surface = instance.create_surface(window.clone()).unwrap();
 
