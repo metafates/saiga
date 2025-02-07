@@ -1,5 +1,3 @@
-use std::u8;
-
 /// A color in the `sRGB` color space.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Color {
@@ -47,6 +45,15 @@ impl Color {
             a,
         }
     }
+
+    pub fn as_linear(&self) -> [f32; 4] {
+        [
+            srgb_channel_to_linear(self.r),
+            srgb_channel_to_linear(self.g),
+            srgb_channel_to_linear(self.b),
+            self.a,
+        ]
+    }
 }
 
 impl From<Color> for wgpu::Color {
@@ -74,5 +81,13 @@ impl From<Color> for glyphon::Color {
         let a = c.a * u8::MAX as f32;
 
         Self::rgba(r as u8, g as u8, b as u8, a as u8)
+    }
+}
+
+fn srgb_channel_to_linear(s: f32) -> f32 {
+    if s <= 0.04045 {
+        s / 12.92
+    } else {
+        ((s + 0.055) / 1.055).powf(2.4)
     }
 }

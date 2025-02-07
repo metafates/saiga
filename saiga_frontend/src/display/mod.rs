@@ -124,7 +124,7 @@ impl Display<'_> {
 
             let rect = Rect {
                 position: [x, y],
-                color: [bg.r, bg.g, bg.b, bg.a],
+                color: bg.as_linear(),
                 size: [cell_width, cell_height],
             };
 
