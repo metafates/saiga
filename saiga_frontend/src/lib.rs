@@ -113,7 +113,7 @@ impl State<'_> {
         match physical_key {
             winit::keyboard::PhysicalKey::Code(key_code) => match key_code {
                 KeyCode::Backspace => {
-                    text = "\x08".to_string();
+                    text = "\x7f".to_string();
                 }
                 _ => {}
             },

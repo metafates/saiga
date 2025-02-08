@@ -9,6 +9,7 @@ use saiga_backend::{
     term::{self, Term, TermMode, cell::Cell},
     tty,
 };
+use saiga_vte::ansi::handler::CursorStyle;
 use tokio::sync::mpsc;
 
 use crate::{settings::BackendSettings, size::Size};
@@ -17,6 +18,7 @@ pub struct Frame {
     pub grid: Grid<Cell>,
     pub mode: TermMode,
     pub cursor: Point,
+    pub cursor_style: CursorStyle,
 }
 
 pub struct Backend {
@@ -55,6 +57,7 @@ impl Backend {
             grid: term.grid().clone(),
             mode: *term.mode(),
             cursor: term.grid().cursor.point,
+            cursor_style: term.cursor_style(),
         };
 
         let term = Arc::new(FairMutex::new(term));
@@ -87,6 +90,7 @@ impl Backend {
             grid: term.grid().clone(),
             mode: *term.mode(),
             cursor: term.grid().cursor.point,
+            cursor_style: term.cursor_style(),
         };
     }
 

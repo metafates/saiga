@@ -4,8 +4,8 @@ pub mod context;
 use std::{mem, sync::Arc};
 
 use brush::{Glyph, Rect};
-use saiga_backend::grid::Dimensions;
-use saiga_vte::ansi::handler::{Color, NamedColor};
+use saiga_backend::{grid::Dimensions, term::TermMode};
+use saiga_vte::ansi::handler::{Color, CursorShape, NamedColor};
 use wgpu::RenderPass;
 use winit::window::Window;
 
@@ -101,6 +101,8 @@ impl Display<'_> {
 
         let frame = backend.prev_frame();
         let grid = &frame.grid;
+        let show_cursor = frame.mode.contains(TermMode::SHOW_CURSOR);
+        let cursor_style = frame.cursor_style;
 
         let count = grid.columns() * grid.screen_lines();
 
@@ -118,8 +120,30 @@ impl Display<'_> {
             let mut fg = terminal.theme.get_color(indexed.fg);
             let mut bg = terminal.theme.get_color(indexed.bg);
 
-            if frame.cursor == indexed.point {
-                mem::swap(&mut fg, &mut bg);
+            let mut cursor_rect = None;
+
+            if show_cursor && frame.cursor == indexed.point {
+                match cursor_style.shape {
+                    CursorShape::Block => mem::swap(&mut fg, &mut bg),
+                    CursorShape::Underline => {
+                        let height = cell_height * 0.15;
+
+                        cursor_rect = Some(Rect {
+                            position: [x, y + cell_height - height],
+                            color: fg.as_linear(),
+                            size: [cell_width, height],
+                        });
+                    }
+                    CursorShape::Beam => {
+                        cursor_rect = Some(Rect {
+                            position: [x, y],
+                            color: fg.as_linear(),
+                            size: [cell_width * 0.15, cell_height],
+                        });
+                    }
+                    CursorShape::HollowBlock => todo!(),
+                    CursorShape::Hidden => {}
+                };
             }
 
             let rect = Rect {
@@ -129,6 +153,10 @@ impl Display<'_> {
             };
 
             rects.push(rect);
+
+            if let Some(cursor_rect) = cursor_rect {
+                rects.push(cursor_rect);
+            }
 
             if indexed.c != ' ' || indexed.c != '\t' {
                 let glyph = Glyph {
