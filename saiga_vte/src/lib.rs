@@ -8,8 +8,9 @@ mod table;
 mod utf8;
 
 use ansi::c0;
+use arrayvec::ArrayVec;
 use param::{Params, Subparam, PARAM_SEPARATOR};
-use std::cmp::min;
+use std::{cmp::min, mem::MaybeUninit};
 use table::{Action, State};
 
 /// X3.64 doesn’t place any limit on the number of intermediate characters allowed before a final character,
@@ -21,6 +22,8 @@ const MAX_INTERMEDIATES: usize = 2;
 /// There is no limit to the number of characters in a parameter string,
 /// although a maximum of 16 parameters need be stored.
 const MAX_OSC_PARAMS: usize = 16;
+
+const MAX_OSC_RAW: usize = 1024;
 
 pub trait Executor {
     /// Draw a character to the screen.
@@ -95,7 +98,7 @@ impl Intermediates {
 pub struct OscHandler {
     params: [(usize, usize); MAX_OSC_PARAMS],
     params_num: usize,
-    raw: Vec<u8>,
+    raw: ArrayVec<u8, MAX_OSC_RAW>,
 }
 
 impl OscHandler {
@@ -160,15 +163,19 @@ impl OscHandler {
     }
 
     pub fn dispatch<E: Executor>(&self, executor: &mut E, byte: u8) {
-        let slices: Vec<&[u8]> = self
-            .params
-            .iter()
-            .map(|(start, end)| &self.raw[*start..*end])
-            .collect();
+        let mut slices: [MaybeUninit<&[u8]>; MAX_OSC_PARAMS] =
+            unsafe { MaybeUninit::uninit().assume_init() };
 
-        let params = &slices[..self.params_num];
+        for (i, slice) in slices.iter_mut().enumerate().take(self.params_num) {
+            let indices = self.params[i];
+            *slice = MaybeUninit::new(&self.raw[indices.0..indices.1]);
+        }
 
-        executor.osc_dispatch(params, byte == ansi::c0::BEL)
+        unsafe {
+            let num_params = self.params_num;
+            let params = &slices[..num_params] as *const [MaybeUninit<&[u8]>] as *const [&[u8]];
+            executor.osc_dispatch(&*params, byte == 0x07);
+        }
     }
 }
 
