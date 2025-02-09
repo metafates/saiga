@@ -100,7 +100,7 @@ pub enum Action {
 
 // Based on https://vt100.net/emu/dec_ansi_parser
 #[inline]
-pub fn change_state(state: State, byte: u8) -> Option<(State, Option<Action>)> {
+pub const fn change_state(state: State, byte: u8) -> Option<(State, Option<Action>)> {
     use Action::*;
     use State::*;
 

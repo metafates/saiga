@@ -24,21 +24,19 @@ impl From<Subparam> for Param {
 }
 
 impl Param {
-    pub fn clear(&mut self) {
+    pub const fn clear(&mut self) {
         self.len = 0
     }
 
-    #[must_use]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.len
     }
 
-    #[must_use]
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
     }
 
-    pub fn push(&mut self, subparam: Subparam) {
+    pub const fn push(&mut self, subparam: Subparam) {
         if self.is_full() {
             return;
         }
@@ -47,12 +45,10 @@ impl Param {
         self.len += 1;
     }
 
-    #[must_use]
-    pub fn is_full(&self) -> bool {
+    pub const fn is_full(&self) -> bool {
         self.len == MAX_SUBPARAMS
     }
 
-    #[must_use]
     pub fn as_slice(&self) -> &[Subparam] {
         &self.array[..self.len]
     }
@@ -74,14 +70,14 @@ pub struct Params {
 
 impl Params {
     pub fn clear(&mut self) {
-        for sub in self.array.iter_mut() {
+        for sub in &mut self.array {
             sub.clear()
         }
 
         self.len = 0
     }
 
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.len
     }
 
@@ -89,15 +85,15 @@ impl Params {
         &self.array[..self.len]
     }
 
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.len == 0
     }
 
-    pub fn is_full(&self) -> bool {
+    pub const fn is_full(&self) -> bool {
         self.len == MAX_PARAMS
     }
 
-    pub fn next_param(&mut self) {
+    pub const fn next_param(&mut self) {
         if self.is_full() {
             return;
         }
