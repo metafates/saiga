@@ -1,4 +1,4 @@
-use std::{borrow::Cow, io, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, io, sync::Arc};
 
 use saiga_backend::{
     event::{Event, EventListener, Notify as _, OnResize as _, WindowSize},
@@ -6,7 +6,7 @@ use saiga_backend::{
     grid::{Cursor, Dimensions, Grid},
     index::{Column, Line, Point},
     sync::FairMutex,
-    term::{self, Term, TermMode, cell::Cell},
+    term::{self, Term, TermDamage, TermMode, cell::Cell},
     tty,
 };
 use saiga_vte::ansi::handler::CursorStyle;
@@ -14,11 +14,44 @@ use tokio::sync::mpsc;
 
 use crate::{settings::BackendSettings, size::Size};
 
+pub enum Damage {
+    Full,
+    Partial(HashMap<usize, (usize, usize)>),
+}
+
+impl Damage {
+    pub const fn is_full(&self) -> bool {
+        matches!(self, Damage::Full)
+    }
+
+    pub fn contains(&self, line: usize, column: usize) -> bool {
+        match self {
+            Damage::Full => true,
+            Damage::Partial(m) => m
+                .get(&line)
+                .map(|(left, right)| *left <= column && column <= *right)
+                .unwrap_or_default(),
+        }
+    }
+}
+
+impl From<TermDamage<'_>> for Damage {
+    fn from(value: TermDamage) -> Self {
+        match value {
+            TermDamage::Full => Damage::Full,
+            TermDamage::Partial(it) => {
+                Damage::Partial(it.map(|b| (b.line, (b.left, b.right))).collect())
+            }
+        }
+    }
+}
+
 pub struct Frame {
     pub grid: Grid<Cell>,
     pub mode: TermMode,
     pub cursor: Point,
     pub cursor_style: CursorStyle,
+    pub damage: Damage,
 }
 
 pub struct Backend {
@@ -58,6 +91,7 @@ impl Backend {
             mode: *term.mode(),
             cursor: term.grid().cursor.point,
             cursor_style: term.cursor_style(),
+            damage: Damage::Full,
         };
 
         let term = Arc::new(FairMutex::new(term));
@@ -84,13 +118,17 @@ impl Backend {
     }
 
     pub fn sync(&mut self) {
-        let term = self.term.lock();
+        let mut term = self.term.lock();
+
+        let damage = term.damage().into();
+        term.reset_damage();
 
         self.prev_frame = Frame {
             grid: term.grid().clone(),
             mode: *term.mode(),
             cursor: term.grid().cursor.point,
             cursor_style: term.cursor_style(),
+            damage,
         };
     }
 

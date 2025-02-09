@@ -9,7 +9,12 @@ use saiga_vte::ansi::handler::{Color, CursorShape, NamedColor};
 use wgpu::RenderPass;
 use winit::window::Window;
 
-use crate::terminal::Terminal;
+use crate::{
+    backend::{Frame, TermSize},
+    term_font::TermFont,
+    terminal::Terminal,
+    theme::Theme,
+};
 
 pub struct Display<'a> {
     pub context: context::Context<'a>,
@@ -53,6 +58,10 @@ impl Display<'_> {
     }
 
     fn render_surface(&mut self, surface: wgpu::SurfaceTexture, terminal: &mut Terminal) {
+        let Some(ref backend) = terminal.backend else {
+            return;
+        };
+
         let mut encoder = self
             .context
             .device
@@ -67,6 +76,8 @@ impl Display<'_> {
                 .theme
                 .get_color(Color::Named(NamedColor::Background));
 
+            let is_full_damage = backend.prev_frame().damage.is_full();
+
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 timestamp_writes: None,
                 occlusion_query_set: None,
@@ -75,31 +86,41 @@ impl Display<'_> {
                     view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(bg.into()),
+                        load: if is_full_damage {
+                            wgpu::LoadOp::Clear(bg.into())
+                        } else {
+                            wgpu::LoadOp::Load
+                        },
                         store: wgpu::StoreOp::Store,
                     },
                 })],
                 depth_stencil_attachment: None,
             });
 
-            self.render_cells(&mut rpass, terminal);
+            self.render_cells(
+                &mut rpass,
+                &terminal.theme,
+                &terminal.font,
+                backend.size(),
+                backend.prev_frame(),
+            );
         }
 
         self.context.queue.submit(Some(encoder.finish()));
         surface.present();
     }
 
-    fn render_cells(&mut self, rpass: &mut RenderPass<'_>, terminal: &mut Terminal) {
-        let Some(ref backend) = terminal.backend else {
-            return;
-        };
-
-        let term_size = backend.size();
-
+    fn render_cells(
+        &mut self,
+        rpass: &mut RenderPass<'_>,
+        theme: &Theme,
+        font: &TermFont,
+        term_size: &TermSize,
+        frame: &Frame,
+    ) {
         let cell_width = term_size.cell_width as f32;
         let cell_height = term_size.cell_height as f32;
 
-        let frame = backend.prev_frame();
         let grid = &frame.grid;
         let show_cursor = frame.mode.contains(TermMode::SHOW_CURSOR);
         let cursor_style = frame.cursor_style;
@@ -109,7 +130,11 @@ impl Display<'_> {
         let mut rects = Vec::with_capacity(count);
         let mut glyphs = Vec::with_capacity(count);
 
-        for indexed in grid.display_iter() {
+        for indexed in grid.display_iter().filter(|c| {
+            frame
+                .damage
+                .contains(c.point.line.0 as usize, c.point.column.0)
+        }) {
             let point = indexed.point;
 
             let (line, column) = (point.line, point.column);
@@ -117,8 +142,8 @@ impl Display<'_> {
             let x = column.0 as f32 * cell_width;
             let y = (line.0 as f32 + grid.display_offset() as f32) * cell_height;
 
-            let mut fg = terminal.theme.get_color(indexed.fg);
-            let mut bg = terminal.theme.get_color(indexed.bg);
+            let mut fg = theme.get_color(indexed.fg);
+            let mut bg = theme.get_color(indexed.bg);
 
             let mut cursor_rect = None;
 
@@ -172,6 +197,6 @@ impl Display<'_> {
 
         self.rect_brush.render(&mut self.context, rpass, rects);
         self.glyph_brush
-            .render(&mut self.context, &terminal.font, rpass, glyphs);
+            .render(&mut self.context, &font, rpass, glyphs);
     }
 }
