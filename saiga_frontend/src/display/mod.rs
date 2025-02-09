@@ -126,7 +126,7 @@ impl Display<'_> {
                 match cursor_style.shape {
                     CursorShape::Block => mem::swap(&mut fg, &mut bg),
                     CursorShape::Underline => {
-                        let height = cell_height * 0.15;
+                        let height = cell_height * 0.1;
 
                         cursor_rect = Some(Rect {
                             position: [x, y + cell_height - height],
@@ -138,7 +138,7 @@ impl Display<'_> {
                         cursor_rect = Some(Rect {
                             position: [x, y],
                             color: fg.as_linear(),
-                            size: [cell_width * 0.15, cell_height],
+                            size: [cell_width * 0.1, cell_height],
                         });
                     }
                     CursorShape::HollowBlock => todo!(),
