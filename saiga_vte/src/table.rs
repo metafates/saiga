@@ -1,4 +1,5 @@
 #[allow(dead_code)]
+#[repr(u8)]
 #[derive(Default, Clone, Copy, PartialEq, Eq, Debug)]
 pub enum State {
     #[default]
@@ -24,6 +25,30 @@ pub enum State {
     SosPmApcString,
 
     Anywhere,
+}
+
+impl State {
+    const fn from_byte(byte: u8) -> Self {
+        use State::*;
+
+        match byte {
+            0 => Ground,
+            1 => Escape,
+            2 => EscapeIntermediate,
+            3 => CsiEntry,
+            4 => CsiParam,
+            5 => CsiIntermediate,
+            6 => CsiIgnore,
+            7 => DcsEntry,
+            8 => DcsParam,
+            9 => DcsIntermediate,
+            10 => DcsPassthrough,
+            11 => DcsIgnore,
+            12 => OscString,
+            13 => SosPmApcString,
+            _ => Anywhere,
+        }
+    }
 }
 
 /// An event may cause one of these actions to occur with or without a change of state.
@@ -98,9 +123,43 @@ pub enum Action {
     Unhook,
 }
 
-// Based on https://vt100.net/emu/dec_ansi_parser
+pub const fn pack(state: State, byte: u8) -> u16 {
+    let state = state as u16;
+
+    (state << 8) | byte as u16
+}
+
+static TABLE: [Option<(State, Option<Action>)>; u16::MAX as usize] = build_table();
+
+const fn build_table() -> [Option<(State, Option<Action>)>; u16::MAX as usize] {
+    let mut table = [None; u16::MAX as usize];
+
+    let mut byte: u8 = 0;
+
+    while byte != u8::MAX {
+        let mut state_byte: u8 = 0;
+
+        while state_byte != State::Anywhere as u8 + 1 {
+            let state = State::from_byte(state_byte);
+
+            table[pack(state, byte) as usize] = change_state_raw(state, byte);
+
+            state_byte += 1;
+        }
+
+        byte += 1;
+    }
+
+    table
+}
+
 #[inline]
 pub const fn change_state(state: State, byte: u8) -> Option<(State, Option<Action>)> {
+    TABLE[pack(state, byte) as usize]
+}
+
+// Based on https://vt100.net/emu/dec_ansi_parser
+const fn change_state_raw(state: State, byte: u8) -> Option<(State, Option<Action>)> {
     use Action::*;
     use State::*;
 
