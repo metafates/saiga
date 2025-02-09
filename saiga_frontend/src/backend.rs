@@ -58,7 +58,6 @@ pub struct Backend {
     term: Arc<FairMutex<Term<EventProxy>>>,
     size: TermSize,
     notifier: Notifier,
-    prev_frame: Frame,
 }
 
 impl Backend {
@@ -86,14 +85,6 @@ impl Backend {
 
         let term = Term::new(config, &term_size, event_proxy.clone());
 
-        let prev_frame = Frame {
-            grid: term.grid().clone(),
-            mode: *term.mode(),
-            cursor: term.grid().cursor.point,
-            cursor_style: term.cursor_style(),
-            damage: Damage::Full,
-        };
-
         let term = Arc::new(FairMutex::new(term));
         let pty_event_loop = EventLoop::new(term.clone(), event_proxy, pty, false)?;
         let notifier = Notifier(pty_event_loop.channel());
@@ -103,33 +94,28 @@ impl Backend {
 
         Ok(Self {
             term,
-            prev_frame,
             size: term_size,
             notifier,
         })
     }
 
-    pub fn prev_frame(&self) -> &Frame {
-        &self.prev_frame
-    }
-
-    pub fn size(&self) -> &TermSize {
-        &self.size
-    }
-
-    pub fn sync(&mut self) {
+    pub fn frame(&mut self) -> Frame {
         let mut term = self.term.lock();
 
         let damage = term.damage().into();
         term.reset_damage();
 
-        self.prev_frame = Frame {
+        Frame {
             grid: term.grid().clone(),
             mode: *term.mode(),
             cursor: term.grid().cursor.point,
             cursor_style: term.cursor_style(),
             damage,
-        };
+        }
+    }
+
+    pub fn size(&self) -> &TermSize {
+        &self.size
     }
 
     pub fn resize(&mut self, surface_size: Option<Size<f32>>, font_measure: Option<Size<f32>>) {

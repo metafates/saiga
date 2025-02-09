@@ -1,7 +1,7 @@
 pub mod brush;
 pub mod context;
 
-use std::{mem, sync::Arc};
+use std::{mem, sync::Arc, u32};
 
 use brush::{Glyph, Rect};
 use saiga_backend::{grid::Dimensions, term::TermMode};
@@ -58,7 +58,7 @@ impl Display<'_> {
     }
 
     fn render_surface(&mut self, surface: wgpu::SurfaceTexture, terminal: &mut Terminal) {
-        let Some(ref backend) = terminal.backend else {
+        let Some(ref mut backend) = terminal.backend else {
             return;
         };
 
@@ -67,30 +67,32 @@ impl Display<'_> {
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
 
-        let view = &surface
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
+        let bg = terminal
+            .theme
+            .get_color(Color::Named(NamedColor::Background));
+
+        let frame = backend.frame();
+        let is_full_damage = frame.damage.is_full();
 
         {
-            let bg = terminal
-                .theme
-                .get_color(Color::Named(NamedColor::Background));
-
-            let is_full_damage = backend.prev_frame().damage.is_full();
+            let load_op = if is_full_damage {
+                wgpu::LoadOp::Clear(bg.into())
+            } else {
+                wgpu::LoadOp::Load
+            };
 
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 timestamp_writes: None,
                 occlusion_query_set: None,
                 label: None,
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view,
+                    view: &self
+                        .context
+                        .texture
+                        .create_view(&wgpu::TextureViewDescriptor::default()),
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: if is_full_damage {
-                            wgpu::LoadOp::Clear(bg.into())
-                        } else {
-                            wgpu::LoadOp::Load
-                        },
+                        load: load_op,
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -102,9 +104,15 @@ impl Display<'_> {
                 &terminal.theme,
                 &terminal.font,
                 backend.size(),
-                backend.prev_frame(),
+                &frame,
             );
         }
+
+        encoder.copy_texture_to_texture(
+            self.context.texture.as_image_copy(),
+            surface.texture.as_image_copy(),
+            self.context.texture.size(),
+        );
 
         self.context.queue.submit(Some(encoder.finish()));
         surface.present();
@@ -183,7 +191,7 @@ impl Display<'_> {
                 rects.push(cursor_rect);
             }
 
-            if indexed.c != ' ' || indexed.c != '\t' {
+            if !indexed.c.is_whitespace() {
                 let glyph = Glyph {
                     value: indexed.c.to_string(),
                     color: fg,
@@ -197,6 +205,6 @@ impl Display<'_> {
 
         self.rect_brush.render(&mut self.context, rpass, rects);
         self.glyph_brush
-            .render(&mut self.context, &font, rpass, glyphs);
+            .render(&mut self.context, font, rpass, glyphs);
     }
 }

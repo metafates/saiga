@@ -13,6 +13,10 @@ pub struct Context<'a> {
     pub alpha_mode: wgpu::CompositeAlphaMode,
     pub color_mode: glyphon::ColorMode,
     pub font_system: FontSystem,
+
+    // persistent
+    pub texture: wgpu::Texture,
+    pub texture_bind_group: wgpu::BindGroup,
 }
 
 impl Context<'_> {
@@ -24,10 +28,10 @@ impl Context<'_> {
             ..Default::default()
         });
 
+        let surface = instance.create_surface(window.clone()).unwrap();
+
         let color_mode = glyphon::ColorMode::Accurate;
         let format = wgpu::TextureFormat::Rgba16Float;
-
-        let surface = instance.create_surface(window.clone()).unwrap();
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -42,6 +46,65 @@ impl Context<'_> {
 
         let alpha_mode = wgpu::CompositeAlphaMode::default();
 
+        let size = window.inner_size();
+
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            size: wgpu::Extent3d {
+                width: size.width,
+                height: size.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            label: None,
+            view_formats: &[],
+        });
+
+        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+        // Create texture sampler and bind group
+        let sampler = device.create_sampler(&wgpu::SamplerDescriptor::default());
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+                label: Some("texture_bind_group_layout"),
+            });
+
+        let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(&sampler),
+                },
+            ],
+            label: Some("texture_bind_group"),
+        });
+
         let mut display = Self {
             window,
             device,
@@ -50,6 +113,8 @@ impl Context<'_> {
             format,
             alpha_mode,
             color_mode,
+            texture,
+            texture_bind_group,
             font_system: FontSystem::new(),
         };
 
@@ -61,9 +126,26 @@ impl Context<'_> {
     fn configure_surface(&mut self) {
         let size = self.window.inner_size();
 
+        self.texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            size: wgpu::Extent3d {
+                width: size.width,
+                height: size.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                .union(wgpu::TextureUsages::TEXTURE_BINDING)
+                .union(wgpu::TextureUsages::COPY_SRC),
+            label: None,
+            view_formats: &[],
+        });
+
         self.surface
             .configure(&self.device, &wgpu::SurfaceConfiguration {
-                usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+                usage: wgpu::TextureUsages::RENDER_ATTACHMENT.union(wgpu::TextureUsages::COPY_DST),
                 format: self.format,
                 width: size.width,
                 height: size.height,

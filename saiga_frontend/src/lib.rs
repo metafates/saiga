@@ -173,10 +173,6 @@ impl ApplicationHandler<Event> for App<'_> {
 
         match event {
             Event::Wakeup => {
-                if let Some(ref mut backend) = state.terminal.backend {
-                    backend.sync();
-                }
-
                 state.request_redraw();
             }
             Event::Title(title) => {
