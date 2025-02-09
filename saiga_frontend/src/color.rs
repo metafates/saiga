@@ -1,3 +1,5 @@
+use saiga_vte::ansi::handler::Rgb;
+
 /// A color in the `sRGB` color space.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Color {
@@ -53,6 +55,16 @@ impl Color {
             srgb_channel_to_linear(self.b),
             self.a,
         ]
+    }
+}
+
+impl From<Color> for Rgb {
+    fn from(value: Color) -> Self {
+        let r = (value.r * u8::MAX as f32) as u8;
+        let g = (value.g * u8::MAX as f32) as u8;
+        let b = (value.b * u8::MAX as f32) as u8;
+
+        Self { r, g, b }
     }
 }
 

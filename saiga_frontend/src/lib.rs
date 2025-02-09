@@ -11,10 +11,12 @@ pub mod theme;
 use std::{borrow::Cow, error::Error, sync::Arc};
 
 use backend::Backend;
+use color::Color;
 use display::Display;
 use font::{Family, Font};
 use pollster::FutureExt;
 use saiga_backend::{event::Event, grid::GridCell};
+use saiga_vte::ansi::handler::Color as AnsiColor;
 use settings::{BackendSettings, FontSettings, Settings};
 use size::Size;
 use terminal::Terminal;
@@ -108,19 +110,17 @@ impl State<'_> {
         };
 
         // TODO: use saiga_input for it
-        let mut text = text.chars().as_str().to_string();
-
-        match physical_key {
+        let sequence = match physical_key {
             winit::keyboard::PhysicalKey::Code(key_code) => match key_code {
-                KeyCode::Backspace => {
-                    text = "\x7f".to_string();
-                }
-                _ => {}
+                KeyCode::Backspace => "\x7f".to_string(),
+                KeyCode::Enter => "\x0d".to_string(),
+                KeyCode::Escape => "\x1b".to_string(),
+                _ => text.chars().as_str().to_string(),
             },
-            _ => {}
-        }
+            _ => text.chars().as_str().to_string(),
+        };
 
-        self.terminal.write(text.into_bytes());
+        self.terminal.write(sequence.into_bytes());
     }
 
     pub fn request_redraw(&self) {
@@ -180,6 +180,26 @@ impl ApplicationHandler<Event> for App<'_> {
             }
             Event::PtyWrite(payload) => state.terminal.write(payload.into_bytes()),
             Event::Exit => event_loop.exit(),
+            // TODO: check if it's slow? since we are acquire mutex for it in backend.color()
+            //
+            // Event::ColorRequest(index, fmt) => {
+            //     let Some(ref backend) = state.terminal.backend else {
+            //         return;
+            //     };
+            //
+            //     let color = backend.color(index).unwrap_or_else(|| {
+            //         let color = state
+            //             .terminal
+            //             .theme
+            //             .get_color(AnsiColor::Indexed(index as u8));
+            //
+            //         color.into()
+            //     });
+            //
+            //     let sequence = fmt(color);
+            //
+            //     state.terminal.write(sequence.into_bytes());
+            // }
             _ => println!("{event:?}"),
         }
     }

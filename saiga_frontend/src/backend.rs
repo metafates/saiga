@@ -6,10 +6,10 @@ use saiga_backend::{
     grid::{Cursor, Dimensions, Grid},
     index::{Column, Line, Point},
     sync::FairMutex,
-    term::{self, Term, TermDamage, TermMode, cell::Cell},
+    term::{self, Term, TermDamage, TermMode, cell::Cell, color::Colors},
     tty,
 };
-use saiga_vte::ansi::handler::CursorStyle;
+use saiga_vte::ansi::handler::{CursorStyle, Rgb};
 use tokio::sync::mpsc;
 
 use crate::{settings::BackendSettings, size::Size};
@@ -141,6 +141,12 @@ impl Backend {
 
             term.resize(self.size);
         }
+    }
+
+    pub fn color(&self, index: usize) -> Option<Rgb> {
+        let term = self.term.lock();
+
+        term.colors()[index]
     }
 
     pub fn write<I: Into<Cow<'static, [u8]>>>(&self, input: I) {

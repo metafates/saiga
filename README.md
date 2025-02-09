@@ -9,4 +9,4 @@ with some ideas taken from [Ghostty](https://github.com/ghostty-org/ghostty).
 
 - SIMD accelerated VTE parser which applies various
 optimizations for processing UTF-8 in parallel.
-- WebGPU frontend
+- WebGPU frontend with damage tracking and partial screen updates
