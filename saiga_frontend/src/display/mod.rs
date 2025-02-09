@@ -1,20 +1,33 @@
 pub mod brush;
 pub mod context;
 
-use std::{mem, sync::Arc, u32};
+use std::{mem, sync::Arc};
 
 use brush::{Glyph, Rect};
-use saiga_backend::{grid::Dimensions, term::TermMode};
-use saiga_vte::ansi::handler::{Color, CursorShape, NamedColor};
+use saiga_backend::{
+    grid::{Dimensions, Grid},
+    term::{TermMode, cell::Cell},
+};
+use saiga_vte::ansi::handler::{Color, CursorShape, CursorStyle, NamedColor};
 use wgpu::RenderPass;
 use winit::window::Window;
 
 use crate::{
-    backend::{Frame, TermSize},
+    backend::{Damage, TermSize},
     term_font::TermFont,
     terminal::Terminal,
     theme::Theme,
 };
+
+struct RenderData<'a> {
+    theme: &'a Theme,
+    font: &'a TermFont,
+    term_size: &'a TermSize,
+    damage: &'a Damage,
+    grid: &'a Grid<Cell>,
+    mode: &'a TermMode,
+    cursor_style: CursorStyle,
+}
 
 pub struct Display<'a> {
     pub context: context::Context<'a>,
@@ -71,48 +84,58 @@ impl Display<'_> {
             .theme
             .get_color(Color::Named(NamedColor::Background));
 
-        let frame = backend.frame();
-        let is_full_damage = frame.damage.is_full();
+        let term_size = *backend.size();
 
-        {
-            let load_op = if is_full_damage {
-                wgpu::LoadOp::Clear(bg.into())
-            } else {
-                wgpu::LoadOp::Load
-            };
+        backend.with_term(|term| {
+            let damage: Damage = term.damage().into();
 
-            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                label: None,
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &self
-                        .context
-                        .texture
-                        .create_view(&wgpu::TextureViewDescriptor::default()),
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: load_op,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-            });
+            let is_full_damage = damage.is_full();
 
-            self.render_cells(
-                &mut rpass,
-                &terminal.theme,
-                &terminal.font,
-                backend.size(),
-                &frame,
+            {
+                let load_op = if is_full_damage {
+                    wgpu::LoadOp::Clear(bg.into())
+                } else {
+                    wgpu::LoadOp::Load
+                };
+
+                let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    label: None,
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &self
+                            .context
+                            .texture
+                            .create_view(&wgpu::TextureViewDescriptor::default()),
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: load_op,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                });
+
+                self.render_cells(
+                    &mut rpass,
+                    &terminal.theme,
+                    &terminal.font,
+                    &term_size,
+                    &damage,
+                    term.grid(),
+                    term.mode(),
+                    term.cursor_style(),
+                );
+            }
+
+            term.reset_damage();
+
+            encoder.copy_texture_to_texture(
+                self.context.texture.as_image_copy(),
+                surface.texture.as_image_copy(),
+                self.context.texture.size(),
             );
-        }
-
-        encoder.copy_texture_to_texture(
-            self.context.texture.as_image_copy(),
-            surface.texture.as_image_copy(),
-            self.context.texture.size(),
-        );
+        });
 
         self.context.queue.submit(Some(encoder.finish()));
         surface.present();
@@ -124,25 +147,25 @@ impl Display<'_> {
         theme: &Theme,
         font: &TermFont,
         term_size: &TermSize,
-        frame: &Frame,
+        damage: &Damage,
+        grid: &Grid<Cell>,
+        mode: &TermMode,
+        cursor_style: CursorStyle,
     ) {
         let cell_width = term_size.cell_width as f32;
         let cell_height = term_size.cell_height as f32;
 
-        let grid = &frame.grid;
-        let show_cursor = frame.mode.contains(TermMode::SHOW_CURSOR);
-        let cursor_style = frame.cursor_style;
+        let show_cursor = mode.contains(TermMode::SHOW_CURSOR);
 
         let count = grid.columns() * grid.screen_lines();
 
         let mut rects = Vec::with_capacity(count);
         let mut glyphs = Vec::with_capacity(count);
 
-        for indexed in grid.display_iter().filter(|c| {
-            frame
-                .damage
-                .contains(c.point.line.0 as usize, c.point.column.0)
-        }) {
+        for indexed in grid
+            .display_iter()
+            .filter(|c| damage.contains(c.point.line.0 as usize, c.point.column.0))
+        {
             let point = indexed.point;
 
             let (line, column) = (point.line, point.column);
@@ -155,7 +178,7 @@ impl Display<'_> {
 
             let mut cursor_rect = None;
 
-            if show_cursor && frame.cursor == indexed.point {
+            if show_cursor && grid.cursor.point == indexed.point {
                 match cursor_style.shape {
                     CursorShape::Block => mem::swap(&mut fg, &mut bg),
                     CursorShape::Underline => {

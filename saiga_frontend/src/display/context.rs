@@ -16,7 +16,6 @@ pub struct Context<'a> {
 
     // persistent
     pub texture: wgpu::Texture,
-    pub texture_bind_group: wgpu::BindGroup,
 }
 
 impl Context<'_> {
@@ -63,48 +62,6 @@ impl Context<'_> {
             view_formats: &[],
         });
 
-        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-        // Create texture sampler and bind group
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor::default());
-        let texture_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            multisampled: false,
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-                label: Some("texture_bind_group_layout"),
-            });
-
-        let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&texture_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-            ],
-            label: Some("texture_bind_group"),
-        });
-
         let mut display = Self {
             window,
             device,
@@ -114,7 +71,6 @@ impl Context<'_> {
             alpha_mode,
             color_mode,
             texture,
-            texture_bind_group,
             font_system: FontSystem::new(),
         };
 

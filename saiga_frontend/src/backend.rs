@@ -46,14 +46,6 @@ impl From<TermDamage<'_>> for Damage {
     }
 }
 
-pub struct Frame {
-    pub grid: Grid<Cell>,
-    pub mode: TermMode,
-    pub cursor: Point,
-    pub cursor_style: CursorStyle,
-    pub damage: Damage,
-}
-
 pub struct Backend {
     term: Arc<FairMutex<Term<EventProxy>>>,
     size: TermSize,
@@ -99,19 +91,10 @@ impl Backend {
         })
     }
 
-    pub fn frame(&mut self) -> Frame {
+    pub fn with_term(&mut self, mut f: impl FnMut(&mut Term<EventProxy>)) {
         let mut term = self.term.lock();
 
-        let damage = term.damage().into();
-        term.reset_damage();
-
-        Frame {
-            grid: term.grid().clone(),
-            mode: *term.mode(),
-            cursor: term.grid().cursor.point,
-            cursor_style: term.cursor_style(),
-            damage,
-        }
+        f(&mut term);
     }
 
     pub fn size(&self) -> &TermSize {

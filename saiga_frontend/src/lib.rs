@@ -200,7 +200,8 @@ impl ApplicationHandler<Event> for App<'_> {
             //
             //     state.terminal.write(sequence.into_bytes());
             // }
-            _ => println!("{event:?}"),
+            // _ => println!("{event:?}"),
+            _ => {}
         }
     }
 
