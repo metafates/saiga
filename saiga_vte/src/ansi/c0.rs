@@ -1,9 +1,4 @@
 //! C0 set of 7-bit control characters (from ANSI X3.4-1977).
-use std::{
-    collections::HashSet,
-    simd::{cmp::SimdPartialEq, num::SimdUint, u8x16, Simd},
-    sync::LazyLock,
-};
 
 /// Null filler, terminal should ignore this character.
 pub const NUL: u8 = 0x00;
@@ -74,74 +69,42 @@ pub const DEL: u8 = 0x7f;
 
 const IN_USE: [u8; 11] = [NUL, BEL, BS, HT, LF, VT, FF, CR, SO, SI, ESC];
 
-const LANES: usize = 16;
+static C0_SET: [bool; u8::MAX as usize] = build_c0_set();
 
-static C0_SET: LazyLock<HashSet<u8>> = LazyLock::new(|| IN_USE.into_iter().collect());
+const fn build_c0_set() -> [bool; u8::MAX as usize] {
+    let mut set: [bool; u8::MAX as usize] = [false; u8::MAX as usize];
 
-pub fn first_index_of_c0(haystack: &[u8]) -> Option<usize> {
-    const INDICES: Simd<u8, LANES> =
-        u8x16::from_array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+    let mut byte = 0;
 
-    const NULLS: Simd<u8, LANES> = u8x16::from_array([u8::MAX; LANES]);
+    while byte != u8::MAX {
+        set[byte as usize] = is_c0(byte);
 
-    const C0_SPLATS: [Simd<u8, 16>; 11] = [
-        u8x16::from_array([NUL; LANES]),
-        u8x16::from_array([BEL; LANES]),
-        u8x16::from_array([BS; LANES]),
-        u8x16::from_array([HT; LANES]),
-        u8x16::from_array([LF; LANES]),
-        u8x16::from_array([VT; LANES]),
-        u8x16::from_array([FF; LANES]),
-        u8x16::from_array([CR; LANES]),
-        u8x16::from_array([SO; LANES]),
-        u8x16::from_array([SI; LANES]),
-        u8x16::from_array([ESC; LANES]),
-    ];
-
-    let mut pos = 0;
-    let mut left = haystack.len();
-
-    while left > 0 {
-        if left < LANES {
-            return first_index_of_c0_scalar(haystack);
-        }
-
-        let h = u8x16::from_slice(&haystack[pos..pos + LANES]);
-
-        let index = C0_SPLATS
-            .into_iter()
-            .filter_map(|splat| {
-                let matches = h.simd_eq(splat);
-
-                if matches.any() {
-                    let result = matches.select(INDICES, NULLS);
-
-                    Some(result.reduce_min() as usize + pos)
-                } else {
-                    None
-                }
-            })
-            .min();
-
-        if index.is_some() {
-            return index;
-        }
-
-        pos += LANES;
-        left -= LANES;
+        byte += 1;
     }
 
-    None
+    set
 }
 
-fn first_index_of_c0_scalar(haystack: &[u8]) -> Option<usize> {
-    for (i, b) in haystack.iter().enumerate() {
-        if C0_SET.contains(b) {
-            return Some(i);
+const fn is_c0(byte: u8) -> bool {
+    let mut i = 0;
+
+    while i != IN_USE.len() {
+        if IN_USE[i] == byte {
+            return true;
         }
+
+        i += 1
     }
 
-    None
+    false
+}
+
+#[inline]
+pub fn first_index_of_c0(haystack: &[u8]) -> Option<usize> {
+    haystack
+        .iter()
+        .enumerate()
+        .find_map(|(i, &b)| if C0_SET[b as usize] { Some(i) } else { None })
 }
 
 #[cfg(test)]
@@ -153,18 +116,7 @@ mod bench {
     const SAMPLE: &[u8] = include_bytes!("test.ansi");
 
     #[bench]
-    fn first_index_of_scalar(b: &mut test::Bencher) {
-        b.iter(|| {
-            let mut i = 0;
-
-            while let Some(idx) = first_index_of_c0_scalar(&SAMPLE[i..]) {
-                i += idx + 1
-            }
-        })
-    }
-
-    #[bench]
-    fn first_index_of_simd(b: &mut test::Bencher) {
+    fn first_index_of_c0_bench(b: &mut test::Bencher) {
         b.iter(|| {
             let mut i = 0;
 

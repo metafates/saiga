@@ -13,20 +13,24 @@ pub struct UTF8Collector {
 }
 
 impl UTF8Collector {
-    pub fn push(&mut self, byte: u8) {
+    #[inline]
+    pub const fn push(&mut self, byte: u8) {
         self.bytes[self.len] = byte;
         self.len += 1;
     }
 
+    #[inline]
     fn as_slice(&self) -> &[u8] {
         &self.bytes[..self.len]
     }
 
-    pub fn reset(&mut self) {
+    #[inline]
+    pub const fn reset(&mut self) {
         self.len = 0;
         self.remaining_count = 0;
     }
 
+    #[inline]
     pub fn char(&self) -> char {
         into_char(self.as_slice())
     }
@@ -52,6 +56,7 @@ pub const fn expected_bytes_count(first_byte: u8) -> Option<usize> {
     }
 }
 
+#[inline]
 pub fn from_utf8(utf8: &[u8]) -> Result<&str, Utf8Error> {
     simdutf8::basic::from_utf8(utf8)
 }

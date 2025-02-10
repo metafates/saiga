@@ -103,14 +103,11 @@ pub enum Scroll {
 ///                        columns
 /// ```
 #[derive(Clone, Debug)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct Grid<T> {
     /// Current cursor for writing data.
-    #[cfg_attr(feature = "serde", serde(skip))]
     pub cursor: Cursor<T>,
 
     /// Last saved cursor.
-    #[cfg_attr(feature = "serde", serde(skip))]
     pub saved_cursor: Cursor<T>,
 
     /// Lines in the grid. Each row holds a list of cells corresponding to the
@@ -586,11 +583,13 @@ pub struct GridIterator<'a, T> {
 
 impl<'a, T> GridIterator<'a, T> {
     /// Current iterator position.
+    #[inline]
     pub fn point(&self) -> Point {
         self.point
     }
 
     /// Cell at the current iterator position.
+    #[inline]
     pub fn cell(&self) -> &'a T {
         &self.grid[self.point]
     }

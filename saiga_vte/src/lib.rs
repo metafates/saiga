@@ -76,20 +76,23 @@ pub struct Intermediates {
 }
 
 impl Intermediates {
+    #[inline]
     pub fn as_slice(&self) -> &[u8] {
         &self.array[..self.index]
     }
 
-    pub fn is_full(&self) -> bool {
+    #[inline]
+    pub const fn is_full(&self) -> bool {
         self.index == MAX_INTERMEDIATES
     }
 
-    pub fn push(&mut self, byte: u8) {
+    pub const fn push(&mut self, byte: u8) {
         self.array[self.index] = byte;
         self.index += 1;
     }
 
-    pub fn clear(&mut self) {
+    #[inline]
+    pub const fn clear(&mut self) {
         self.index = 0
     }
 }
@@ -218,7 +221,7 @@ impl Parser {
 
             self.advance_utf8(executor, &remaining_bytes[..next_sequence_start]);
 
-            if self.utf8.remaining_count > 0 {
+            if self.utf8.remaining_count != 0 {
                 executor.print(char::REPLACEMENT_CHARACTER);
                 self.utf8.reset();
             }
@@ -246,7 +249,7 @@ impl Parser {
         while !remaining_bytes.is_empty() {
             let want_bytes_count: usize;
 
-            if self.utf8.remaining_count > 0 {
+            if self.utf8.remaining_count != 0 {
                 want_bytes_count = self.utf8.remaining_count
             } else if let Some(count) = utf8::expected_bytes_count(remaining_bytes[0]) {
                 // Optimize for ASCII
@@ -261,7 +264,7 @@ impl Parser {
                 want_bytes_count = 1;
             }
 
-            let bytes_count = min(want_bytes_count, remaining_bytes.len());
+            let bytes_count = want_bytes_count.min(remaining_bytes.len());
 
             for b in remaining_bytes.iter().take(bytes_count) {
                 self.utf8.push(*b);
@@ -294,6 +297,7 @@ impl Parser {
         self.state_change(executor, state, action, byte);
     }
 
+    #[inline]
     fn in_escape_sequence(&self) -> bool {
         self.state != State::Ground
     }

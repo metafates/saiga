@@ -123,6 +123,7 @@ pub enum Action {
     Unhook,
 }
 
+#[inline]
 pub const fn pack(state: State, byte: u8) -> u16 {
     let state = state as u16;
 

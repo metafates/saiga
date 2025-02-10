@@ -24,14 +24,17 @@ impl From<Subparam> for Param {
 }
 
 impl Param {
+    #[inline]
     pub const fn clear(&mut self) {
         self.len = 0
     }
 
+    #[inline]
     pub const fn len(&self) -> usize {
         self.len
     }
 
+    #[inline]
     pub const fn is_empty(&self) -> bool {
         self.len == 0
     }
@@ -45,10 +48,12 @@ impl Param {
         self.len += 1;
     }
 
+    #[inline]
     pub const fn is_full(&self) -> bool {
         self.len == MAX_SUBPARAMS
     }
 
+    #[inline]
     pub fn as_slice(&self) -> &[Subparam] {
         &self.array[..self.len]
     }
@@ -77,18 +82,22 @@ impl Params {
         self.len = 0
     }
 
+    #[inline]
     pub const fn len(&self) -> usize {
         self.len
     }
 
+    #[inline]
     pub fn as_slice(&self) -> &[Param] {
         &self.array[..self.len]
     }
 
+    #[inline]
     pub const fn is_empty(&self) -> bool {
         self.len == 0
     }
 
+    #[inline]
     pub const fn is_full(&self) -> bool {
         self.len == MAX_PARAMS
     }
@@ -101,7 +110,8 @@ impl Params {
         self.len += 1;
     }
 
-    pub fn push_subparam(&mut self, subparam: Subparam) {
+    #[inline]
+    pub const fn push_subparam(&mut self, subparam: Subparam) {
         self.array[self.len].push(subparam);
     }
 }

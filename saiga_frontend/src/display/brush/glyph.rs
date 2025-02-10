@@ -4,13 +4,15 @@ use glyphon::{
 };
 use wgpu::MultisampleState;
 
-use crate::{color::Color, display::context, size::Size, term_font::TermFont};
+use crate::{backend::TermSize, color::Color, display::context, size::Size, term_font::TermFont};
 
 pub struct Glyph {
     pub value: String,
     pub color: Color,
     pub top: f32,
     pub left: f32,
+    pub width: u16,
+    pub height: u16,
 }
 
 pub struct Brush {
@@ -55,7 +57,6 @@ impl Brush {
         glyphs: Vec<Glyph>,
     ) {
         let scale_factor = ctx.window.scale_factor();
-        let size = ctx.window.inner_size();
 
         let mut buffers: Vec<(Buffer, Glyph)> = Vec::with_capacity(glyphs.len());
         let attrs = font.font_type.attributes();
@@ -68,11 +69,11 @@ impl Brush {
 
             buf.set_size(
                 &mut ctx.font_system,
-                Some(size.width as f32),
-                Some(size.height as f32),
+                Some(glyph.width as f32),
+                Some(glyph.height as f32),
             );
 
-            buf.set_text(&mut ctx.font_system, &glyph.value, attrs, Shaping::Basic);
+            buf.set_text(&mut ctx.font_system, &glyph.value, attrs, Shaping::Advanced);
 
             buffers.push((buf, glyph));
         }

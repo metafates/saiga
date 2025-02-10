@@ -220,6 +220,8 @@ impl Display<'_> {
                     color: fg,
                     top: y,
                     left: x,
+                    width: term_size.cell_width,
+                    height: term_size.cell_height,
                 };
 
                 glyphs.push(glyph);

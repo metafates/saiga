@@ -8,22 +8,19 @@ pub mod term_font;
 pub mod terminal;
 pub mod theme;
 
-use std::{borrow::Cow, error::Error, sync::Arc};
+use std::{error::Error, sync::Arc};
 
-use backend::Backend;
-use color::Color;
 use display::Display;
 use font::{Family, Font};
 use pollster::FutureExt;
-use saiga_backend::{event::Event, grid::GridCell};
-use saiga_vte::ansi::handler::Color as AnsiColor;
+use saiga_backend::event::Event;
 use settings::{BackendSettings, FontSettings, Settings};
 use size::Size;
 use terminal::Terminal;
-use tokio::{runtime, sync::mpsc};
+use tokio::sync::mpsc;
 use winit::{
     application::ApplicationHandler,
-    dpi::{LogicalSize, PhysicalSize},
+    dpi::LogicalSize,
     event::{ElementState, KeyEvent, WindowEvent},
     event_loop::{EventLoop, EventLoopProxy},
     keyboard::KeyCode,

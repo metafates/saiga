@@ -146,10 +146,7 @@ impl Brush {
             label: Some("rect::Pipeline uniforms"),
         });
 
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: None,
-            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("rect.wgsl"))),
-        });
+        let shader = device.create_shader_module(wgpu::include_wgsl!("rect.wgsl"));
 
         let vertex_buffers = [
             wgpu::VertexBufferLayout {
@@ -275,7 +272,7 @@ impl Brush {
 }
 
 #[inline]
-pub fn orthographic_projection(width: f32, height: f32) -> [f32; 16] {
+pub const fn orthographic_projection(width: f32, height: f32) -> [f32; 16] {
     [
         2.0 / width,
         0.0,
