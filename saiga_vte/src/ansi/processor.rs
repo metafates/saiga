@@ -726,9 +726,9 @@ impl<H: Handler> Executor for HandlerExecutor<'_, H> {
 }
 
 #[inline]
-fn attrs_from_sgr_parameters<'a, H: Handler, I: Iterator<Item = &'a Param>>(
-    handler: &mut H,
-    params: &mut I,
+fn attrs_from_sgr_parameters<'a>(
+    handler: &mut impl Handler,
+    params: &mut impl Iterator<Item = &'a Param>,
 ) {
     while let Some(param) = params.next() {
         let attr = match param.as_slice() {
@@ -835,10 +835,7 @@ fn handle_colon_rgb(params: &[u16]) -> Option<Color> {
 }
 
 /// Parse a color specifier from list of attributes.
-fn subparam_sgr_to_color<I>(params: &mut I) -> Option<Color>
-where
-    I: Iterator<Item = Subparam>,
-{
+fn subparam_sgr_to_color(params: &mut impl Iterator<Item = Subparam>) -> Option<Color> {
     match params.next() {
         Some(2) => Some(Color::Spec(Rgb {
             r: u8::try_from(params.next()?).ok()?,
@@ -923,7 +920,7 @@ fn parse_number(input: &[u8]) -> Option<u8> {
 }
 
 /// Parse a color specifier from list of attributes.
-fn parse_sgr_color<I: Iterator<Item = u16>>(params: &mut I) -> Option<Color> {
+fn parse_sgr_color(params: &mut impl Iterator<Item = u16>) -> Option<Color> {
     match params.next() {
         Some(2) => Some(Color::Spec(Rgb {
             r: u8::try_from(params.next()?).ok()?,

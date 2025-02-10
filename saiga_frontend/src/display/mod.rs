@@ -19,7 +19,7 @@ use crate::{
     theme::Theme,
 };
 
-struct RenderData<'a> {
+struct Frame<'a> {
     theme: &'a Theme,
     font: &'a TermFont,
     term_size: &'a TermSize,
@@ -116,16 +116,15 @@ impl Display<'_> {
                     depth_stencil_attachment: None,
                 });
 
-                self.render_cells(
-                    &mut rpass,
-                    &terminal.theme,
-                    &terminal.font,
-                    &term_size,
-                    &damage,
-                    term.grid(),
-                    term.mode(),
-                    term.cursor_style(),
-                );
+                self.render_cells(&mut rpass, &Frame {
+                    theme: &terminal.theme,
+                    font: &terminal.font,
+                    term_size: &term_size,
+                    damage: &damage,
+                    grid: term.grid(),
+                    mode: term.mode(),
+                    cursor_style: term.cursor_style(),
+                });
             }
 
             term.reset_damage();
@@ -141,45 +140,36 @@ impl Display<'_> {
         surface.present();
     }
 
-    fn render_cells(
-        &mut self,
-        rpass: &mut RenderPass<'_>,
-        theme: &Theme,
-        font: &TermFont,
-        term_size: &TermSize,
-        damage: &Damage,
-        grid: &Grid<Cell>,
-        mode: &TermMode,
-        cursor_style: CursorStyle,
-    ) {
-        let cell_width = term_size.cell_width as f32;
-        let cell_height = term_size.cell_height as f32;
+    fn render_cells(&mut self, rpass: &mut RenderPass<'_>, frame: &Frame) {
+        let cell_width = frame.term_size.cell_width as f32;
+        let cell_height = frame.term_size.cell_height as f32;
 
-        let show_cursor = mode.contains(TermMode::SHOW_CURSOR);
+        let show_cursor = frame.mode.contains(TermMode::SHOW_CURSOR);
 
-        let count = grid.columns() * grid.screen_lines();
+        let count = frame.grid.columns() * frame.grid.screen_lines();
 
         let mut rects = Vec::with_capacity(count);
         let mut glyphs = Vec::with_capacity(count);
 
-        for indexed in grid
-            .display_iter()
-            .filter(|c| damage.contains(c.point.line.0 as usize, c.point.column.0))
-        {
+        for indexed in frame.grid.display_iter().filter(|c| {
+            frame
+                .damage
+                .contains(c.point.line.0 as usize, c.point.column.0)
+        }) {
             let point = indexed.point;
 
             let (line, column) = (point.line, point.column);
 
             let x = column.0 as f32 * cell_width;
-            let y = (line.0 as f32 + grid.display_offset() as f32) * cell_height;
+            let y = (line.0 as f32 + frame.grid.display_offset() as f32) * cell_height;
 
-            let mut fg = theme.get_color(indexed.fg);
-            let mut bg = theme.get_color(indexed.bg);
+            let mut fg = frame.theme.get_color(indexed.fg);
+            let mut bg = frame.theme.get_color(indexed.bg);
 
             let mut cursor_rect = None;
 
-            if show_cursor && grid.cursor.point == indexed.point {
-                match cursor_style.shape {
+            if show_cursor && frame.grid.cursor.point == indexed.point {
+                match frame.cursor_style.shape {
                     CursorShape::Block => mem::swap(&mut fg, &mut bg),
                     CursorShape::Underline => {
                         let height = cell_height * 0.1;
@@ -220,8 +210,8 @@ impl Display<'_> {
                     color: fg,
                     top: y,
                     left: x,
-                    width: term_size.cell_width,
-                    height: term_size.cell_height,
+                    width: frame.term_size.cell_width,
+                    height: frame.term_size.cell_height,
                 };
 
                 glyphs.push(glyph);
@@ -230,6 +220,6 @@ impl Display<'_> {
 
         self.rect_brush.render(&mut self.context, rpass, rects);
         self.glyph_brush
-            .render(&mut self.context, font, rpass, glyphs);
+            .render(&mut self.context, frame.font, rpass, glyphs);
     }
 }

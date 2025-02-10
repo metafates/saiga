@@ -69,7 +69,7 @@ pub enum Mode {
 }
 
 impl Mode {
-    pub fn new(mode: u16) -> Self {
+    pub const fn new(mode: u16) -> Self {
         match mode {
             4 => Self::Named(NamedMode::Insert),
             20 => Self::Named(NamedMode::LineFeedNewLine),
@@ -78,7 +78,7 @@ impl Mode {
     }
 
     /// Get the raw value of the mode.
-    pub fn raw(self) -> u16 {
+    pub const fn raw(self) -> u16 {
         match self {
             Self::Named(named) => named as u16,
             Self::Unknown(mode) => mode,
@@ -111,7 +111,7 @@ pub enum PrivateMode {
 }
 
 impl PrivateMode {
-    pub fn new(mode: u16) -> Self {
+    pub const fn new(mode: u16) -> Self {
         match mode {
             1 => Self::Named(NamedPrivateMode::CursorKeys),
             3 => Self::Named(NamedPrivateMode::ColumnMode),
@@ -135,7 +135,7 @@ impl PrivateMode {
     }
 
     /// Get the raw value of the mode.
-    pub fn raw(self) -> u16 {
+    pub const fn raw(self) -> u16 {
         match self {
             Self::Named(named) => named as u16,
             Self::Unknown(mode) => mode,
@@ -335,7 +335,7 @@ impl Charset {
     /// Switch/Map character to the active charset. Ascii is the common case and
     /// for that we want to do as little as possible.
     #[inline]
-    pub fn map(self, c: char) -> char {
+    pub const fn map(self, c: char) -> char {
         match self {
             Charset::Ascii => c,
             Charset::SpecialCharacterAndLineDrawing => match c {
@@ -490,7 +490,7 @@ pub enum NamedColor {
 
 impl NamedColor {
     #[must_use]
-    pub fn to_bright(self) -> Self {
+    pub const fn to_bright(self) -> Self {
         match self {
             NamedColor::Foreground => NamedColor::BrightForeground,
             NamedColor::Black => NamedColor::BrightBlack,
@@ -515,7 +515,7 @@ impl NamedColor {
     }
 
     #[must_use]
-    pub fn to_dim(self) -> Self {
+    pub const fn to_dim(self) -> Self {
         match self {
             NamedColor::Black => NamedColor::DimBlack,
             NamedColor::Red => NamedColor::DimRed,
@@ -548,7 +548,7 @@ pub struct Rgb {
 }
 
 impl Rgb {
-    pub fn new(r: u8, g: u8, b: u8) -> Self {
+    pub const fn new(r: u8, g: u8, b: u8) -> Self {
         Self { r, g, b }
     }
 }

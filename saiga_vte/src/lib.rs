@@ -10,7 +10,7 @@ mod utf8;
 use ansi::c0;
 use arrayvec::ArrayVec;
 use param::{Params, Subparam, PARAM_SEPARATOR};
-use std::{cmp::min, mem::MaybeUninit};
+use std::mem::MaybeUninit;
 use table::{Action, State};
 
 /// X3.64 doesn’t place any limit on the number of intermediate characters allowed before a final character,

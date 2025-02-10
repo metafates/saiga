@@ -224,7 +224,8 @@ impl Cell {
 impl GridCell for Cell {
     #[inline]
     fn is_empty(&self) -> bool {
-        (self.c == ' ' || self.c == '\t')
+        // (self.c.is_whitespace() == ' ' || self.c == '\t')
+        self.c.is_whitespace()
             && self.bg == Color::Named(NamedColor::Background)
             && self.fg == Color::Named(NamedColor::Foreground)
             && !self.flags.intersects(

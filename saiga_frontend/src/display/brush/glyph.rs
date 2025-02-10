@@ -1,10 +1,10 @@
 use glyphon::{
-    Attrs, Buffer, Cache, FontSystem, Metrics, Resolution, Shaping, SwashCache, TextArea,
-    TextAtlas, TextBounds, TextRenderer, Viewport,
+    Buffer, Cache, Metrics, Resolution, Shaping, SwashCache, TextArea, TextAtlas, TextBounds,
+    TextRenderer, Viewport,
 };
 use wgpu::MultisampleState;
 
-use crate::{backend::TermSize, color::Color, display::context, size::Size, term_font::TermFont};
+use crate::{color::Color, display::context, size::Size, term_font::TermFont};
 
 pub struct Glyph {
     pub value: String,

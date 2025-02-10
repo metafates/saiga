@@ -20,17 +20,15 @@ pub struct Context<'a> {
 
 impl Context<'_> {
     pub async fn new(window: Arc<Window>) -> Self {
-        let backends = wgpu::Backends::all();
-
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends,
+            backends: wgpu::Backends::all(),
             ..Default::default()
         });
 
         let surface = instance.create_surface(window.clone()).unwrap();
 
         let color_mode = glyphon::ColorMode::Accurate;
-        let format = wgpu::TextureFormat::Rgba16Float;
+        let format = wgpu::TextureFormat::Bgra8UnormSrgb;
 
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {

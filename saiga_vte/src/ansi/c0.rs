@@ -67,17 +67,26 @@ pub const US: u8 = 0x1F;
 /// Delete, should be ignored by terminal.
 pub const DEL: u8 = 0x7f;
 
-const IN_USE: [u8; 11] = [NUL, BEL, BS, HT, LF, VT, FF, CR, SO, SI, ESC];
+const ALL: [u8; 32] = [
+    NUL, SOH, STX, ETX, EOT, ENQ, ACK, BEL, BS, HT, LF, VT, FF, CR, SO, SI, DLE, XON, DC2, XOFF,
+    DC4, SYN, ETB, CAN, EM, SUB, ESC, FS, GS, RS, US, DEL,
+];
 
-static C0_SET: [bool; u8::MAX as usize] = build_c0_set();
+const C0_SET_LEN: usize = u8::MAX as usize + 1;
 
-const fn build_c0_set() -> [bool; u8::MAX as usize] {
-    let mut set: [bool; u8::MAX as usize] = [false; u8::MAX as usize];
+static C0_SET: [bool; C0_SET_LEN] = build_c0_set();
+
+const fn build_c0_set() -> [bool; C0_SET_LEN] {
+    let mut set: [bool; C0_SET_LEN] = [false; C0_SET_LEN];
 
     let mut byte = 0;
 
-    while byte != u8::MAX {
+    loop {
         set[byte as usize] = is_c0(byte);
+
+        if byte == u8::MAX {
+            break;
+        }
 
         byte += 1;
     }
@@ -88,8 +97,8 @@ const fn build_c0_set() -> [bool; u8::MAX as usize] {
 const fn is_c0(byte: u8) -> bool {
     let mut i = 0;
 
-    while i != IN_USE.len() {
-        if IN_USE[i] == byte {
+    while i != ALL.len() {
+        if ALL[i] == byte {
             return true;
         }
 
