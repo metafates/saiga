@@ -15,9 +15,47 @@ optimizations for processing UTF-8 in parallel.
 
 Saiga aims to be fast.
 
-Right now it lacks many useful (and not so) features and optimizations. However, it can already outperform Alacritty terminal on [alacritty/vtebench](https://github.com/alacritty/vtebench)
+Right now it lacks many useful (and not so) features and optimizations.
+However, it can already outperform Alacritty terminal on [alacritty/vtebench](https://github.com/alacritty/vtebench)
 
 <img width="700" alt="vtebench results" src="https://github.com/user-attachments/assets/a8760b7b-ffcf-4b11-acce-cc9e8fbe0394">
 
-The screenshot above demonstrates results of the benchmark. 
-Alacritty is on the left, Saiga is on the right. Apple M3 Pro, 36 GB RAM compiled with PGO
+The screenshot above demonstrates results of the benchmark.
+Alacritty is on the left, Saiga is on the right.
+Apple M3 Pro, 36 GB RAM compiled with PGO
+
+## Building
+
+You will need rust stable toolchain.
+
+Install [just](https://github.com/casey/just) command runner
+
+Build without profile guided optimizattions.
+_You might want them, as they give significant performance boost_
+
+```bash
+just build
+
+# You can then run saiga like that
+./target/release/saiga
+```
+
+Build with profile guided optimizations:
+
+```bash
+# First, you need to generate a profile. To do so, run
+just generate-pgo
+
+# It will compile and run saiga in special mode for generating pgo data.
+# Do something with it you would normally do with terminal, like using vim.
+# You can also run vtebench with it.
+
+# After you're done recording your profile close the terminal and merge generated profile data
+just merge-pgo
+
+# And compile with it
+just build-pgo
+
+# You can then run saiga like that
+./target/release/saiga
+```
