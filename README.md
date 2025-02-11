@@ -30,7 +30,7 @@ You will need rust stable toolchain.
 
 Install [just](https://github.com/casey/just) command runner
 
-Build without profile guided optimizattions.
+Build without profile guided optimizations.
 _You might want them, as they give significant performance boost_
 
 ```bash
@@ -42,11 +42,14 @@ just build
 
 Build with profile guided optimizations:
 
+> [!IMPORTANT]
+> On macOS you will need to install latest `llvm` tools: `brew install llvm` **AND** follow the instructions it will give you after the installation, like properly adding it to the `$PATH`
+
 ```bash
 # First, you need to generate a profile. To do so, run
 just generate-pgo
 
-# It will compile and run saiga in special mode for generating pgo data.
+# It will compile and run saiga in special mode for generating PGO data.
 # Do something with it you would normally do with terminal, like using vim.
 # You can also run vtebench with it.
 
