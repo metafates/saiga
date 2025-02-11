@@ -136,6 +136,7 @@ impl Display<'_> {
             );
         });
 
+        self.window().pre_present_notify();
         self.context.queue.submit(Some(encoder.finish()));
         surface.present();
     }
@@ -146,7 +147,11 @@ impl Display<'_> {
 
         let show_cursor = frame.mode.contains(TermMode::SHOW_CURSOR);
 
-        let count = frame.grid.columns() * frame.grid.screen_lines();
+        // let count = frame.grid.columns() * frame.grid.screen_lines();
+        let count = match frame.damage {
+            Damage::Full => frame.grid.columns() * frame.grid.screen_lines(),
+            Damage::Partial(lines) => frame.grid.columns() * lines.len(),
+        };
 
         let mut rects = Vec::with_capacity(count);
         let mut glyphs = Vec::with_capacity(count);

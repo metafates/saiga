@@ -56,27 +56,28 @@ impl Brush {
         rpass: &mut wgpu::RenderPass,
         glyphs: Vec<Glyph>,
     ) {
-        let scale_factor = ctx.window.scale_factor();
-
-        let mut buffers: Vec<(Buffer, Glyph)> = Vec::with_capacity(glyphs.len());
         let attrs = font.font_type.attributes();
+        let buffers: Vec<_> = glyphs
+            .into_iter()
+            .map(|glyph| {
+                let mut buf = Buffer::new(
+                    &mut ctx.font_system,
+                    Metrics::relative(font.size, font.scale_factor),
+                );
 
-        for glyph in glyphs {
-            let mut buf = Buffer::new(
-                &mut ctx.font_system,
-                Metrics::relative(font.size, font.scale_factor),
-            );
+                buf.set_size(
+                    &mut ctx.font_system,
+                    Some(glyph.width as f32),
+                    Some(glyph.height as f32),
+                );
 
-            buf.set_size(
-                &mut ctx.font_system,
-                Some(glyph.width as f32),
-                Some(glyph.height as f32),
-            );
+                buf.set_text(&mut ctx.font_system, &glyph.value, attrs, Shaping::Advanced);
 
-            buf.set_text(&mut ctx.font_system, &glyph.value, attrs, Shaping::Advanced);
+                (buf, glyph)
+            })
+            .collect();
 
-            buffers.push((buf, glyph));
-        }
+        let scale_factor = ctx.window.scale_factor();
 
         let text_areas = buffers.iter().map(|(buf, glyph)| TextArea {
             buffer: buf,

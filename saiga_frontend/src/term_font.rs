@@ -13,14 +13,14 @@ impl TermFont {
         let measure = measure_font(
             font_system,
             settings.size,
-            settings.scale_factor,
+            settings.line_scale_factor,
             settings.font_type,
         );
 
         Self {
             size: settings.size,
             font_type: settings.font_type,
-            scale_factor: settings.scale_factor,
+            scale_factor: settings.line_scale_factor,
             measure,
         }
     }

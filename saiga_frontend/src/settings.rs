@@ -29,7 +29,7 @@ impl Default for BackendSettings {
 #[derive(Debug, Clone)]
 pub struct FontSettings {
     pub size: f32,
-    pub scale_factor: f32,
+    pub line_scale_factor: f32,
     pub font_type: Font,
 }
 
@@ -37,7 +37,7 @@ impl Default for FontSettings {
     fn default() -> Self {
         Self {
             size: 15.0,
-            scale_factor: 1.3,
+            line_scale_factor: 1.3,
             font_type: Font::MONOSPACE,
         }
     }

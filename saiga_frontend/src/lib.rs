@@ -8,10 +8,10 @@ pub mod term_font;
 pub mod terminal;
 pub mod theme;
 
-use std::{error::Error, sync::Arc};
+use std::{env, error::Error, sync::Arc};
 
 use display::Display;
-use font::{Family, Font};
+use font::{Family, Font, Weight};
 use pollster::FutureExt;
 use saiga_backend::event::Event;
 use settings::{BackendSettings, FontSettings, Settings};
