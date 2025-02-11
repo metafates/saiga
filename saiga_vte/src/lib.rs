@@ -1,6 +1,3 @@
-#![feature(test)]
-#![feature(portable_simd)]
-
 pub mod ansi;
 pub mod param;
 

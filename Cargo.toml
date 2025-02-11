@@ -3,8 +3,12 @@ resolver = "2"
 members = [
     "saiga",
     "saiga_backend",
-    "iced_saiga",
     "saiga_vte",
     "saiga_frontend",
     "saiga_input",
 ]
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"

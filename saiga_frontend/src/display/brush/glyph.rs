@@ -43,10 +43,13 @@ impl Brush {
     pub fn resize(&mut self, ctx: &context::Context) {
         let size = ctx.window.inner_size();
 
-        self.viewport.update(&ctx.queue, Resolution {
-            width: size.width,
-            height: size.height,
-        });
+        self.viewport.update(
+            &ctx.queue,
+            Resolution {
+                width: size.width,
+                height: size.height,
+            },
+        );
     }
 
     pub fn render(
@@ -71,7 +74,7 @@ impl Brush {
                     Some(glyph.height as f32),
                 );
 
-                buf.set_text(&mut ctx.font_system, &glyph.value, attrs, Shaping::Advanced);
+                buf.set_text(&mut ctx.font_system, &glyph.value, attrs, Shaping::Basic);
 
                 (buf, glyph)
             })
