@@ -887,6 +887,7 @@ impl<T> Term<T> {
             .unwrap_or(self.config.default_cursor_style)
     }
 
+    #[inline]
     pub fn colors(&self) -> &Colors {
         &self.colors
     }

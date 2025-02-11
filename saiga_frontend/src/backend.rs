@@ -97,6 +97,7 @@ impl Backend {
         f(&mut term);
     }
 
+    #[inline]
     pub fn size(&self) -> &TermSize {
         &self.size
     }
