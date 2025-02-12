@@ -36,6 +36,7 @@ impl UTF8Collector {
     }
 }
 
+#[inline]
 pub const fn expected_bytes_count(first_byte: u8) -> Option<usize> {
     #[rustfmt::skip]
     const LENGTHS: [usize; 32] = [
@@ -47,13 +48,9 @@ pub const fn expected_bytes_count(first_byte: u8) -> Option<usize> {
         0,
     ];
 
-    let len = LENGTHS[first_byte as usize >> 3];
+    const EXPECTED: [Option<usize>; 5] = [None, Some(1), Some(2), Some(3), Some(4)];
 
-    if len == 0 {
-        None
-    } else {
-        Some(len)
-    }
+    EXPECTED[LENGTHS[first_byte as usize >> 3]]
 }
 
 #[inline]
