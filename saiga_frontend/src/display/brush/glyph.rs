@@ -1,6 +1,6 @@
 use glyphon::{
     Buffer, Cache, Metrics, Resolution, Shaping, SwashCache, TextArea, TextAtlas, TextBounds,
-    TextRenderer, Viewport,
+    TextRenderer, Viewport, Weight,
 };
 use wgpu::MultisampleState;
 
@@ -11,8 +11,10 @@ pub struct Glyph {
     pub color: Color,
     pub top: f32,
     pub left: f32,
-    pub width: u16,
-    pub height: u16,
+    pub width: f32,
+    pub height: f32,
+    pub italic: bool,
+    pub bold: bool,
 }
 
 pub struct Brush {
@@ -68,11 +70,19 @@ impl Brush {
                     Metrics::relative(font.size, font.scale_factor),
                 );
 
-                buf.set_size(
-                    &mut ctx.font_system,
-                    Some(glyph.width as f32),
-                    Some(glyph.height as f32),
-                );
+                buf.set_size(&mut ctx.font_system, Some(glyph.width), Some(glyph.height));
+
+                let attrs = if glyph.italic {
+                    attrs.style(glyphon::Style::Italic)
+                } else {
+                    attrs
+                };
+
+                let attrs = if glyph.bold {
+                    attrs.weight(Weight::BOLD)
+                } else {
+                    attrs
+                };
 
                 buf.set_text(&mut ctx.font_system, &glyph.value, attrs, Shaping::Basic);
 

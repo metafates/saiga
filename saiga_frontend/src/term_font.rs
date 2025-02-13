@@ -42,7 +42,7 @@ fn measure_font(
 
     buffer.set_text(
         font_system,
-        "a",
+        "█",
         font_type.attributes(),
         glyphon::Shaping::Advanced,
     );

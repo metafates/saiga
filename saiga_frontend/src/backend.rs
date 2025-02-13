@@ -6,7 +6,7 @@ use saiga_backend::{
     grid::{Cursor, Dimensions, Grid},
     index::{Column, Line, Point},
     sync::FairMutex,
-    term::{self, Term, TermDamage, TermMode, cell::Cell, color::Colors},
+    term::{self, cell::Cell, color::Colors, Term, TermDamage, TermMode},
     tty,
 };
 use saiga_vte::ansi::handler::{CursorStyle, Rgb};
@@ -67,8 +67,8 @@ impl Backend {
         let config = term::Config::default();
 
         let term_size = TermSize {
-            cell_width: font_size.width as u16,
-            cell_height: font_size.height as u16,
+            cell_width: font_size.width.round() as u16,
+            cell_height: font_size.height.ceil() as u16,
             ..Default::default()
         };
 
@@ -111,8 +111,8 @@ impl Backend {
         };
 
         if let Some(size) = font_measure {
-            self.size.cell_height = size.height as u16;
-            self.size.cell_width = size.width as u16;
+            self.size.cell_height = size.height.ceil() as u16;
+            self.size.cell_width = size.width.round() as u16;
         }
 
         let lines = (self.size.surface_height / self.size.cell_height as f32).floor() as u16;

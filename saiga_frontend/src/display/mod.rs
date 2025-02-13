@@ -6,7 +6,10 @@ use std::{mem, sync::Arc};
 use brush::{Glyph, Rect};
 use saiga_backend::{
     grid::{Dimensions, Grid},
-    term::{TermMode, cell::Cell},
+    term::{
+        cell::{Cell, Flags},
+        TermMode,
+    },
 };
 use saiga_vte::ansi::handler::{Color, CursorShape, CursorStyle, NamedColor};
 use wgpu::RenderPass;
@@ -116,15 +119,18 @@ impl Display<'_> {
                     depth_stencil_attachment: None,
                 });
 
-                self.render_cells(&mut rpass, &Frame {
-                    theme: &terminal.theme,
-                    font: &terminal.font,
-                    term_size: &term_size,
-                    damage: &damage,
-                    grid: term.grid(),
-                    mode: term.mode(),
-                    cursor_style: term.cursor_style(),
-                });
+                self.render_cells(
+                    &mut rpass,
+                    &Frame {
+                        theme: &terminal.theme,
+                        font: &terminal.font,
+                        term_size: &term_size,
+                        damage: &damage,
+                        grid: term.grid(),
+                        mode: term.mode(),
+                        cursor_style: term.cursor_style(),
+                    },
+                );
             }
 
             term.reset_damage();
@@ -142,9 +148,6 @@ impl Display<'_> {
     }
 
     fn render_cells(&mut self, rpass: &mut RenderPass<'_>, frame: &Frame) {
-        let cell_width = frame.term_size.cell_width as f32;
-        let cell_height = frame.term_size.cell_height as f32;
-
         let show_cursor = frame.mode.contains(TermMode::SHOW_CURSOR);
 
         // let count = frame.grid.columns() * frame.grid.screen_lines();
@@ -165,8 +168,9 @@ impl Display<'_> {
 
             let (line, column) = (point.line, point.column);
 
-            let x = column.0 as f32 * cell_width;
-            let y = (line.0 as f32 + frame.grid.display_offset() as f32) * cell_height;
+            let x = column.0 * frame.term_size.cell_width as usize;
+            let y =
+                (line.0 + frame.grid.display_offset() as i32) * frame.term_size.cell_height as i32;
 
             let mut fg = frame.theme.get_color(indexed.fg);
             let mut bg = frame.theme.get_color(indexed.bg);
@@ -177,19 +181,28 @@ impl Display<'_> {
                 match frame.cursor_style.shape {
                     CursorShape::Block => mem::swap(&mut fg, &mut bg),
                     CursorShape::Underline => {
-                        let height = cell_height * 0.1;
+                        let height = frame.term_size.cell_height as f32 * 0.1;
 
                         cursor_rect = Some(Rect {
-                            position: [x, y + cell_height - height],
+                            position: [
+                                x as f32,
+                                (y + frame.term_size.cell_height as i32) as f32 - height,
+                            ],
                             color: fg.as_linear(),
-                            size: [cell_width, height],
+                            size: [frame.term_size.cell_width as f32, height],
                         });
                     }
                     CursorShape::Beam => {
                         cursor_rect = Some(Rect {
-                            position: [x, y],
-                            color: fg.as_linear(),
-                            size: [cell_width * 0.1, cell_height],
+                            position: [x as f32, y as f32],
+                            color: frame
+                                .theme
+                                .get_color(Color::Named(NamedColor::Foreground))
+                                .as_linear(),
+                            size: [
+                                frame.term_size.cell_width as f32 * 0.1,
+                                frame.term_size.cell_height as f32,
+                            ],
                         });
                     }
                     CursorShape::HollowBlock => todo!(),
@@ -198,9 +211,12 @@ impl Display<'_> {
             }
 
             let rect = Rect {
-                position: [x, y],
+                position: [x as f32, y as f32],
                 color: bg.as_linear(),
-                size: [cell_width, cell_height],
+                size: [
+                    frame.term_size.cell_width as f32,
+                    frame.term_size.cell_height as f32,
+                ],
             };
 
             rects.push(rect);
@@ -210,13 +226,25 @@ impl Display<'_> {
             }
 
             if !indexed.c.is_whitespace() {
+                let (bold, italic) = if indexed.flags.contains(Flags::BOLD_ITALIC) {
+                    (true, true)
+                } else if indexed.flags.contains(Flags::BOLD) {
+                    (true, false)
+                } else if indexed.flags.contains(Flags::ITALIC) {
+                    (false, true)
+                } else {
+                    (false, false)
+                };
+
                 let glyph = Glyph {
                     value: indexed.c.to_string(),
                     color: fg,
-                    top: y,
-                    left: x,
-                    width: frame.term_size.cell_width,
-                    height: frame.term_size.cell_height,
+                    top: y as f32,
+                    left: x as f32,
+                    width: frame.font.measure.width,
+                    height: frame.font.measure.height,
+                    bold,
+                    italic,
                 };
 
                 glyphs.push(glyph);
