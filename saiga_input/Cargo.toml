@@ -5,3 +5,5 @@ edition = "2021"
 
 [dependencies]
 bitflags = "2.8.0"
+saiga_macros = { path = "../saiga_macros" }
+const_format = "0.2.34"

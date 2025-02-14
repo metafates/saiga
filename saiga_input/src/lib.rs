@@ -1,3 +1,6 @@
-pub mod encoder;
-pub mod function_keys;
-pub mod key;
+mod encoder;
+mod function_keys;
+mod key;
+
+pub use encoder::Encoder;
+pub use key::{Action, Key, KeyEvent, Mods};

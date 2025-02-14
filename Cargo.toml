@@ -6,6 +6,7 @@ members = [
     "saiga_vte",
     "saiga_frontend",
     "saiga_input",
+    "saiga_macros",
 ]
 
 # https://deterministic.space/high-performance-rust.html

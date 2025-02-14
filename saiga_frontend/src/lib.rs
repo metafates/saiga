@@ -8,12 +8,13 @@ pub mod term_font;
 pub mod terminal;
 pub mod theme;
 
-use std::{env, error::Error, sync::Arc};
+use std::{error::Error, sync::Arc};
 
 use display::Display;
-use font::{Family, Font, Weight};
+use font::{Family, Font};
 use pollster::FutureExt;
 use saiga_backend::event::Event;
+use saiga_input::Mods;
 use settings::{BackendSettings, FontSettings, Settings};
 use size::Size;
 use terminal::Terminal;
@@ -58,6 +59,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
 struct State<'a> {
     terminal: Terminal,
     display: Display<'a>,
+    mods: saiga_input::Mods,
 }
 
 impl State<'_> {
@@ -67,7 +69,11 @@ impl State<'_> {
         let mut terminal = Terminal::new(1, &mut display.context.font_system, settings);
         terminal.init_backend(sender);
 
-        Self { terminal, display }
+        Self {
+            terminal,
+            display,
+            mods: Mods::empty(),
+        }
     }
 
     pub fn render(&mut self) {
@@ -95,29 +101,70 @@ impl State<'_> {
         self.terminal.resize(Some(size), None);
     }
 
-    pub fn handle_key_key(&self, event: KeyEvent) {
+    pub fn handle_key_key(&mut self, event: KeyEvent) {
         let KeyEvent {
-            state: ElementState::Pressed,
+            state,
             physical_key,
-            text: Some(text),
+            text,
             ..
-        } = event
-        else {
-            return;
-        };
+        } = event;
 
-        // TODO: use saiga_input for it
-        let sequence = match physical_key {
-            winit::keyboard::PhysicalKey::Code(key_code) => match key_code {
-                KeyCode::Backspace => "\x7f".to_string(),
-                KeyCode::Enter => "\x0d".to_string(),
-                KeyCode::Escape => "\x1b".to_string(),
-                _ => text.chars().as_str().to_string(),
+        let mods = match physical_key {
+            winit::keyboard::PhysicalKey::Code(code) => match code {
+                KeyCode::AltLeft => Some(Mods::LEFT_ALT),
+                KeyCode::AltRight => Some(Mods::RIGHT_ALT),
+                KeyCode::ControlLeft => Some(Mods::LEFT_CTRL),
+                KeyCode::ControlRight => Some(Mods::RIGHT_CTRL),
+                KeyCode::SuperLeft => Some(Mods::LEFT_SUPER),
+                KeyCode::SuperRight => Some(Mods::RIGHT_SUPER),
+                KeyCode::ShiftLeft => Some(Mods::LEFT_SHIFT),
+                KeyCode::ShiftRight => Some(Mods::RIGHT_SHIFT),
+                _ => None,
             },
-            _ => text.chars().as_str().to_string(),
+            _ => None,
         };
 
-        self.terminal.write(sequence.into_bytes());
+        if let Some(mods) = mods {
+            match state {
+                ElementState::Pressed => self.mods.insert(mods),
+                ElementState::Released => self.mods.remove(mods),
+            }
+
+            return;
+        }
+
+        // TODO
+        let encoder = saiga_input::Encoder {
+            event: saiga_input::KeyEvent {
+                action: todo!(),
+                key: todo!(),
+                physical_key: todo!(),
+                mods: todo!(),
+                consumed_mods: todo!(),
+                composing: todo!(),
+                utf8: todo!(),
+                unshifted_char: todo!(),
+            },
+            modify_other_keys_state_2: false,
+        };
+
+        if let Some(seq) = encoder.encode() {
+            self.terminal.write(seq);
+        } else if let Some(utf8) = text {
+            self.terminal.write(utf8.as_bytes());
+        }
+
+        // let sequence = match physical_key {
+        //     winit::keyboard::PhysicalKey::Code(key_code) => match key_code {
+        //         KeyCode::Backspace => "\x7f".to_string(),
+        //         KeyCode::Enter => "\x0d".to_string(),
+        //         KeyCode::Escape => "\x1b".to_string(),
+        //         _ => text.chars().as_str().to_string(),
+        //     },
+        //     _ => text.chars().as_str().to_string(),
+        // };
+        //
+        // self.terminal.write(sequence.into_bytes());
     }
 
     pub fn request_redraw(&self) {
