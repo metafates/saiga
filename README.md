@@ -62,3 +62,9 @@ just build-pgo
 # You can then run saiga like that
 ./target/release/saiga
 ```
+
+## TODO
+
+- Proper input handling. Right now it's very basic and does not handle any key modifiers, like ctrl, nor function keys, e.g. arrows. Mouse support is planned too (including text selection).
+- Basic configuration
+- Fix renderer issues, like rects overflowing each other
