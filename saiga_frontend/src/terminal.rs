@@ -5,7 +5,7 @@ use tokio::sync::mpsc;
 
 use crate::{
     backend::Backend,
-    settings::{BackendSettings, Settings},
+    settings::{BackendSettings, FontSettings, Settings},
     size::Size,
     term_font::TermFont,
     theme::Theme,
@@ -48,6 +48,10 @@ impl Terminal {
         };
 
         backend.write(input)
+    }
+
+    pub fn set_font(&mut self, font_system: &mut glyphon::FontSystem, font_settings: FontSettings) {
+        self.font = TermFont::new(font_system, font_settings);
     }
 
     pub fn resize(&mut self, surface_size: Option<Size<f32>>, font_measure: Option<Size<f32>>) {

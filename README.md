@@ -22,7 +22,9 @@ However, it can already outperform Alacritty terminal on [alacritty/vtebench](ht
 
 The screenshot above demonstrates results of the benchmark.
 Alacritty is on the left, Saiga is on the right.
-Apple M3 Pro, 36 GB RAM compiled with PGO
+Apple M3 Pro, 36 GB RAM compiled with PGO.
+
+The results of the benchmark may vary, as the Saiga is work in progress project.
 
 ## Building
 
@@ -65,6 +67,6 @@ just build-pgo
 
 ## TODO
 
-- Proper input handling. Right now it's very basic and does not handle any key modifiers, like ctrl, nor function keys, e.g. arrows. Mouse support is planned too (including text selection).
+- Proper input handling. Right now it's very basic and does not handle some key sequences. Mouse support is planned too (including text selection).
 - Basic configuration
 - Fix renderer issues, like rects overflowing each other

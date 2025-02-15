@@ -8,3 +8,6 @@ log = "0.4.25"
 simdutf8 = "0.1.5"
 bitflags = "2.8.0"
 arrayvec = "0.7.6"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }

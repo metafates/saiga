@@ -4,7 +4,7 @@ use wgpu::util::DeviceExt;
 
 use crate::display::context;
 
-const MAX_INSTANCES: usize = 10_000;
+const MAX_INSTANCES: usize = 30_000;
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)]

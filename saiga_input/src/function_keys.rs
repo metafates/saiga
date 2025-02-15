@@ -1,25 +1,29 @@
 use crate::key::{Key, Mods};
 
-const BUFFER_SIZE: usize = 8192;
+const BUFFER_SIZE: usize = 30;
 
+#[derive(Clone, Copy, Debug)]
 pub enum CursorMode {
     Any,
     Normal,
     Application,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub enum KeypadMode {
     Any,
     Normal,
     Application,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub enum ModifyKeys {
     Any,
     Set,
     SetOther,
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct Sequence {
     buffer: [u8; BUFFER_SIZE],
     len: usize,
@@ -65,6 +69,7 @@ impl Sequence {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct Entry {
     pub mods: Mods,
     pub mods_empty_is_any: bool,
@@ -127,10 +132,24 @@ const fn build_key_entries_set() -> [&'static [Entry]; KEY_ENTRIES_SET_LEN] {
 
     let mut i = 0;
 
+    const fn get_entries(key: Key) -> &'static [Entry] {
+        let mut i = 0;
+
+        while i < KEY_ENTRIES.len() {
+            if key as u8 == KEY_ENTRIES[i].0 as u8 {
+                return KEY_ENTRIES[i].1;
+            }
+
+            i += 1;
+        }
+
+        &[]
+    }
+
     while i < KEY_ENTRIES_SET_LEN {
         let key = Key::ALL_VARIANTS[i];
 
-        set[key as usize] = get_key_entries_raw(key);
+        set[key as usize] = get_entries(key);
 
         i += 1;
     }
@@ -143,25 +162,46 @@ pub const fn get_key_entries(key: Key) -> &'static [Entry] {
     KEY_ENTRIES_SET[key as usize]
 }
 
-const fn get_key_entries_raw(key: Key) -> &'static [Entry] {
+const fn concat_entries<const A: usize, const B: usize, const C: usize>(
+    a: [Entry; A],
+    b: [Entry; B],
+) -> [Entry; C] {
+    let mut result = [Entry::DEFAULT; C];
+
     let mut i = 0;
 
-    while i < KEY_ENTRIES.len() {
-        if key as u8 == KEY_ENTRIES[i].0 as u8 {
-            return KEY_ENTRIES[i].1;
-        }
+    while i < A {
+        result[i] = a[i];
 
         i += 1;
     }
 
-    &[]
+    while (i - A) < B {
+        result[i] = b[i - A];
+
+        i += 1;
+    }
+
+    result
 }
 
 const KEY_ENTRIES: [(Key, &[Entry]); 8] = [
-    (Key::Up, &pc_style(b"\x1b[1;", b"A")),
-    (Key::Down, &pc_style(b"\x1b[1;", b"B")),
-    (Key::Right, &pc_style(b"\x1b[1;", b"C")),
-    (Key::Left, &pc_style(b"\x1b[1;", b"D")),
+    (
+        Key::Up,
+        &concat_entries::<15, 2, 17>(pc_style(b"\x1b[1;", b"A"), cursor_key(b"\x1b[A", b"\x1bOA")),
+    ),
+    (
+        Key::Down,
+        &concat_entries::<15, 2, 17>(pc_style(b"\x1b[1;", b"B"), cursor_key(b"\x1b[B", b"\x1bOB")),
+    ),
+    (
+        Key::Right,
+        &concat_entries::<15, 2, 17>(pc_style(b"\x1b[1;", b"C"), cursor_key(b"\x1b[C", b"\x1bOC")),
+    ),
+    (
+        Key::Left,
+        &concat_entries::<15, 2, 17>(pc_style(b"\x1b[1;", b"D"), cursor_key(b"\x1b[D", b"\x1bOD")),
+    ),
     (
         Key::Backspace,
         &[
@@ -236,4 +276,19 @@ const fn pc_style(left: &'static [u8], right: &'static [u8]) -> [Entry; 15] {
     }
 
     entries
+}
+
+const fn cursor_key(normal: &'static [u8], application: &'static [u8]) -> [Entry; 2] {
+    [
+        Entry {
+            cursor: CursorMode::Normal,
+            sequence: Sequence::new(normal),
+            ..Entry::DEFAULT
+        },
+        Entry {
+            cursor: CursorMode::Application,
+            sequence: Sequence::new(application),
+            ..Entry::DEFAULT
+        },
+    ]
 }

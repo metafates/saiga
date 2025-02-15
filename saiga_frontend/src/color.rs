@@ -48,7 +48,7 @@ impl Color {
         }
     }
 
-    pub fn as_linear(&self) -> [f32; 4] {
+    pub fn to_linear(&self) -> [f32; 4] {
         [
             srgb_channel_to_linear(self.r),
             srgb_channel_to_linear(self.g),
@@ -70,11 +70,13 @@ impl From<Color> for Rgb {
 
 impl From<Color> for wgpu::Color {
     fn from(c: Color) -> Self {
+        let [r, g, b, a] = c.to_linear();
+
         Self {
-            r: c.r as f64,
-            g: c.g as f64,
-            b: c.b as f64,
-            a: c.a as f64,
+            r: r as f64,
+            g: g as f64,
+            b: b as f64,
+            a: a as f64,
         }
     }
 }

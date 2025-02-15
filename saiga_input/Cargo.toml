@@ -6,4 +6,7 @@ edition = "2021"
 [dependencies]
 bitflags = "2.8.0"
 saiga_macros = { path = "../saiga_macros" }
-const_format = "0.2.34"
+winit = { version = "0.30.9", optional = true }
+
+[features]
+winit = ["dep:winit"]

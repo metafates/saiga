@@ -8,7 +8,7 @@ glyphon = "0.8.0"
 wgpu = "24.0.1"
 saiga_backend = { path = "../saiga_backend" }
 saiga_vte = { path = "../saiga_vte" }
-saiga_input = { path = "../saiga_input" }
+saiga_input = { path = "../saiga_input", features = ["winit"] }
 winit = "0.30.8"
 tokio = { version = "1.43.0", features = ["full"] }
 bytemuck = { version = "1.21.0", features = ["derive"] }

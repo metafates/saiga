@@ -61,13 +61,13 @@ impl Brush {
         rpass: &mut wgpu::RenderPass,
         glyphs: Vec<Glyph>,
     ) {
-        let attrs = font.font_type.attributes();
+        let attrs = font.settings.font_type.attributes();
         let buffers: Vec<_> = glyphs
             .into_iter()
             .map(|glyph| {
                 let mut buf = Buffer::new(
                     &mut ctx.font_system,
-                    Metrics::relative(font.size, font.scale_factor),
+                    Metrics::relative(font.settings.size, font.settings.line_scale_factor),
                 );
 
                 buf.set_size(&mut ctx.font_system, Some(glyph.width), Some(glyph.height));

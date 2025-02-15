@@ -188,7 +188,7 @@ impl Display<'_> {
                                 x as f32,
                                 (y + frame.term_size.cell_height as i32) as f32 - height,
                             ],
-                            color: fg.as_linear(),
+                            color: fg.to_linear(),
                             size: [frame.term_size.cell_width as f32, height],
                         });
                     }
@@ -198,7 +198,7 @@ impl Display<'_> {
                             color: frame
                                 .theme
                                 .get_color(Color::Named(NamedColor::Foreground))
-                                .as_linear(),
+                                .to_linear(),
                             size: [
                                 frame.term_size.cell_width as f32 * 0.1,
                                 frame.term_size.cell_height as f32,
@@ -212,7 +212,7 @@ impl Display<'_> {
 
             let rect = Rect {
                 position: [x as f32, y as f32],
-                color: bg.as_linear(),
+                color: bg.to_linear(),
                 size: [
                     frame.term_size.cell_width as f32,
                     frame.term_size.cell_height as f32,

@@ -2,9 +2,7 @@ use crate::{font::Font, settings::FontSettings, size::Size};
 
 #[derive(Debug, Clone)]
 pub struct TermFont {
-    pub size: f32,
-    pub font_type: Font,
-    pub scale_factor: f32,
+    pub settings: FontSettings,
     pub measure: Size<f32>,
 }
 
@@ -17,12 +15,7 @@ impl TermFont {
             settings.font_type,
         );
 
-        Self {
-            size: settings.size,
-            font_type: settings.font_type,
-            scale_factor: settings.line_scale_factor,
-            measure,
-        }
+        Self { settings, measure }
     }
 }
 

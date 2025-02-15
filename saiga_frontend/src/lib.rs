@@ -98,7 +98,8 @@ impl State<'_> {
                 .set_resize_increments(Some(resize_increment));
         }
 
-        self.terminal.resize(Some(size), None);
+        self.terminal
+            .resize(Some(size), Some(self.terminal.font.measure));
     }
 
     pub fn handle_key_key(&mut self, event: KeyEvent) {
@@ -106,8 +107,11 @@ impl State<'_> {
             state,
             physical_key,
             text,
+            repeat,
             ..
         } = event;
+
+        // TODO: better structure this function. it's a mess right now
 
         let mods = match physical_key {
             winit::keyboard::PhysicalKey::Code(code) => match code {
@@ -133,17 +137,54 @@ impl State<'_> {
             return;
         }
 
-        // TODO
+        let key = saiga_input::Key::from(physical_key);
+
+        if state == ElementState::Pressed && self.mods == Mods::LEFT_SUPER {
+            match key {
+                saiga_input::Key::Minus => {
+                    self.terminal.set_font(
+                        &mut self.display.context.font_system,
+                        FontSettings {
+                            size: self.terminal.font.settings.size - 1.0,
+                            ..self.terminal.font.settings
+                        },
+                    );
+                    self.sync_size();
+                    return;
+                }
+                saiga_input::Key::Equal => {
+                    self.terminal.set_font(
+                        &mut self.display.context.font_system,
+                        FontSettings {
+                            size: self.terminal.font.settings.size + 1.0,
+                            ..self.terminal.font.settings
+                        },
+                    );
+                    self.sync_size();
+                    return;
+                }
+                _ => {}
+            }
+        }
+
+        // TODO: fill it properly
         let encoder = saiga_input::Encoder {
             event: saiga_input::KeyEvent {
-                action: todo!(),
-                key: todo!(),
-                physical_key: todo!(),
-                mods: todo!(),
-                consumed_mods: todo!(),
-                composing: todo!(),
-                utf8: todo!(),
-                unshifted_char: todo!(),
+                action: if repeat {
+                    saiga_input::Action::Repeat
+                } else {
+                    match state {
+                        ElementState::Pressed => saiga_input::Action::Press,
+                        ElementState::Released => saiga_input::Action::Release,
+                    }
+                },
+                key,
+                physical_key: key,
+                mods: self.mods,
+                consumed_mods: Mods::LEFT_SHIFT.union(Mods::RIGHT_SHIFT),
+                composing: false,
+                utf8: text.as_ref().map(|s| s.as_str()).unwrap_or_default(),
+                unshifted_char: '\0',
             },
             modify_other_keys_state_2: false,
         };
@@ -151,20 +192,8 @@ impl State<'_> {
         if let Some(seq) = encoder.encode() {
             self.terminal.write(seq);
         } else if let Some(utf8) = text {
-            self.terminal.write(utf8.as_bytes());
+            self.terminal.write(utf8.to_string().into_bytes());
         }
-
-        // let sequence = match physical_key {
-        //     winit::keyboard::PhysicalKey::Code(key_code) => match key_code {
-        //         KeyCode::Backspace => "\x7f".to_string(),
-        //         KeyCode::Enter => "\x0d".to_string(),
-        //         KeyCode::Escape => "\x1b".to_string(),
-        //         _ => text.chars().as_str().to_string(),
-        //     },
-        //     _ => text.chars().as_str().to_string(),
-        // };
-        //
-        // self.terminal.write(sequence.into_bytes());
     }
 
     pub fn request_redraw(&self) {

@@ -63,7 +63,7 @@ impl Encoder<'_> {
 
         // TODO: others
 
-        todo!()
+        None
     }
 }
 
