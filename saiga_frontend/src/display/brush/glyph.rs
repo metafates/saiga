@@ -1,6 +1,6 @@
 use glyphon::{
-    Buffer, Cache, Metrics, Resolution, Shaping, SwashCache, TextArea, TextAtlas, TextBounds,
-    TextRenderer, Viewport, Weight,
+    Buffer, Cache, Metrics, PrepareError, Resolution, Shaping, SwashCache, TextArea, TextAtlas,
+    TextBounds, TextRenderer, Viewport, Weight,
 };
 use wgpu::MultisampleState;
 
@@ -84,7 +84,7 @@ impl Brush {
                     attrs
                 };
 
-                buf.set_text(&mut ctx.font_system, &glyph.value, attrs, Shaping::Basic);
+                buf.set_text(&mut ctx.font_system, &glyph.value, attrs, Shaping::Advanced);
 
                 (buf, glyph)
             })
@@ -107,20 +107,33 @@ impl Brush {
             custom_glyphs: &[],
         });
 
-        self.text_renderer
-            .prepare(
-                &ctx.device,
-                &ctx.queue,
-                &mut ctx.font_system,
-                &mut self.atlas,
-                &self.viewport,
-                text_areas,
-                &mut self.swash_cache,
-            )
-            .unwrap();
+        {
+            if let Err(PrepareError::AtlasFull) = self.prepare(ctx, text_areas.clone()) {
+                self.atlas.trim();
+
+                // TODO: prepare again
+                self.prepare(ctx, text_areas).unwrap();
+            }
+        }
 
         self.text_renderer
             .render(&self.atlas, &self.viewport, rpass)
             .unwrap();
+    }
+
+    fn prepare<'a>(
+        &mut self,
+        ctx: &mut context::Context,
+        text_areas: impl IntoIterator<Item = TextArea<'a>>,
+    ) -> Result<(), PrepareError> {
+        self.text_renderer.prepare(
+            &ctx.device,
+            &ctx.queue,
+            &mut ctx.font_system,
+            &mut self.atlas,
+            &self.viewport,
+            text_areas,
+            &mut self.swash_cache,
+        )
     }
 }

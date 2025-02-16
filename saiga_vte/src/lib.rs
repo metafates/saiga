@@ -200,7 +200,7 @@ impl Parser {
         Self::default()
     }
 
-    pub fn advance<E: Executor>(&mut self, executor: &mut E, bytes: &[u8]) {
+    pub fn advance(&mut self, executor: &mut impl Executor, bytes: &[u8]) {
         let mut i = 0;
 
         while self.in_escape_sequence() && i < bytes.len() {
@@ -240,7 +240,7 @@ impl Parser {
         }
     }
 
-    fn advance_utf8<E: Executor>(&mut self, executor: &mut E, bytes: &[u8]) {
+    fn advance_utf8(&mut self, executor: &mut impl Executor, bytes: &[u8]) {
         let mut remaining_bytes = bytes;
 
         while !remaining_bytes.is_empty() {
@@ -263,7 +263,7 @@ impl Parser {
 
             let bytes_count = want_bytes_count.min(remaining_bytes.len());
 
-            for b in remaining_bytes.iter().take(bytes_count) {
+            for b in remaining_bytes[..bytes_count].iter() {
                 self.utf8.push(*b);
             }
 
@@ -277,13 +277,13 @@ impl Parser {
         }
     }
 
-    fn consume_utf8<E: Executor>(&mut self, executor: &mut E) {
+    fn consume_utf8(&mut self, executor: &mut impl Executor) {
         executor.print(self.utf8.char());
 
         self.utf8.reset();
     }
 
-    fn advance_sequence<E: Executor>(&mut self, executor: &mut E, byte: u8) {
+    fn advance_sequence(&mut self, executor: &mut impl Executor, byte: u8) {
         let change = table::change_state(State::Anywhere, byte)
             .or_else(|| table::change_state(self.state, byte));
 
@@ -330,7 +330,7 @@ impl Parser {
         }
     }
 
-    fn execute_state_entry_action<E: Executor>(&mut self, executor: &mut E, byte: u8) {
+    fn execute_state_entry_action(&mut self, executor: &mut impl Executor, byte: u8) {
         match self.state {
             State::CsiEntry | State::DcsEntry | State::Escape => {
                 self.execute_action(executor, Action::Clear, byte);
@@ -345,7 +345,7 @@ impl Parser {
         }
     }
 
-    fn execute_state_exit_action<E: Executor>(&mut self, executor: &mut E, byte: u8) {
+    fn execute_state_exit_action(&mut self, executor: &mut impl Executor, byte: u8) {
         match self.state {
             State::DcsPassthrough => {
                 self.execute_action(executor, Action::Unhook, byte);
@@ -357,7 +357,7 @@ impl Parser {
         }
     }
 
-    fn execute_action<E: Executor>(&mut self, executor: &mut E, action: Action, byte: u8) {
+    fn execute_action(&mut self, executor: &mut impl Executor, action: Action, byte: u8) {
         use Action::*;
 
         match action {
