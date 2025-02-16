@@ -132,7 +132,7 @@ impl OscHandler {
 
             self.params_num += 1;
         } else {
-            self.raw.push(byte);
+            let _ = self.raw.try_push(byte);
         }
     }
 
