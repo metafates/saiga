@@ -16,3 +16,17 @@ merge-pgo:
 
 build-pgo:
     RUSTFLAGS="-Cprofile-use={{ pgo_merged }}" cargo build --release 
+
+bench:
+    cargo bench
+
+[macos]
+bench-results:
+    open ./target/criterion/report/index.html
+
+[linux]
+bench-results:
+    xdg-open ./target/criterion/report/index.html
+
+test:
+    cargo test

@@ -11,3 +11,7 @@ arrayvec = "0.7.6"
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "parser"
+harness = false

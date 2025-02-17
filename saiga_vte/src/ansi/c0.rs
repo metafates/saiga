@@ -116,22 +116,22 @@ pub fn first_index_of_c0(haystack: &[u8]) -> Option<usize> {
         .find_map(|(i, &b)| if C0_SET[b as usize] { Some(i) } else { None })
 }
 
-#[cfg(test)]
-mod bench {
-    use super::*;
-
-    extern crate test;
-
-    const SAMPLE: &[u8] = include_bytes!("test.ansi");
-
-    #[bench]
-    fn first_index_of_c0_bench(b: &mut test::Bencher) {
-        b.iter(|| {
-            let mut i = 0;
-
-            while let Some(idx) = first_index_of_c0(&SAMPLE[i..]) {
-                i += idx + 1
-            }
-        })
-    }
-}
+// #[cfg(test)]
+// mod bench {
+//     use super::*;
+//
+//     extern crate test;
+//
+//     const SAMPLE: &[u8] = include_bytes!("test.ansi");
+//
+//     #[bench]
+//     fn first_index_of_c0_bench(b: &mut test::Bencher) {
+//         b.iter(|| {
+//             let mut i = 0;
+//
+//             while let Some(idx) = first_index_of_c0(&SAMPLE[i..]) {
+//                 i += idx + 1
+//             }
+//         })
+//     }
+// }

@@ -136,7 +136,7 @@ impl OscHandler {
         }
     }
 
-    pub fn end<E: Executor>(&mut self, executor: &mut E, byte: u8) {
+    pub fn end(&mut self, executor: &mut impl Executor, byte: u8) {
         let param_idx = self.params_num;
         let idx = self.raw.len();
 
@@ -162,7 +162,7 @@ impl OscHandler {
         self.dispatch(executor, byte);
     }
 
-    pub fn dispatch<E: Executor>(&self, executor: &mut E, byte: u8) {
+    pub fn dispatch(&self, executor: &mut impl Executor, byte: u8) {
         let mut slices: [MaybeUninit<&[u8]>; MAX_OSC_PARAMS] =
             unsafe { MaybeUninit::uninit().assume_init() };
 
@@ -985,112 +985,112 @@ mod tests {
     }
 }
 
-#[cfg(test)]
-mod bench {
-
-    use super::*;
-
-    extern crate test;
-
-    #[derive(Default)]
-    struct NopExecutor {}
-
-    impl Executor for NopExecutor {
-        fn print(&mut self, _c: char) {}
-
-        fn execute(&mut self, _byte: u8) {}
-
-        fn put(&mut self, _byte: u8) {}
-
-        fn hook(&mut self, _params: &Params, _intermediates: &[u8], _ignore: bool, _action: char) {}
-
-        fn unhook(&mut self) {}
-
-        fn osc_dispatch(&mut self, _params: &[&[u8]], _bell_terminated: bool) {}
-
-        fn esc_dispatch(&mut self, _intermediates: &[u8], _ignore: bool, _byte: u8) {}
-
-        fn csi_dispatch(
-            &mut self,
-            _params: &Params,
-            _intermediates: &[u8],
-            _ignore: bool,
-            _action: char,
-        ) {
-        }
-    }
-
-    const INPUT: &[u8] = include_bytes!("ansi/test.ansi");
-
-    #[bench]
-    fn advance_batch(b: &mut test::Bencher) {
-        let mut parser = Parser::new();
-        let mut executor = NopExecutor::default();
-
-        b.iter(|| {
-            parser.advance(&mut executor, INPUT);
-        })
-    }
-
-    #[bench]
-    fn advance_sequential(b: &mut test::Bencher) {
-        let mut parser = Parser::new();
-        let mut executor = NopExecutor::default();
-
-        b.iter(|| {
-            for byte in INPUT {
-                parser.advance(&mut executor, &[*byte]);
-            }
-        })
-    }
-
-    mod utf8 {
-        use super::*;
-
-        // TODO: make inputs of the same size
-
-        static INPUT_NON_ASCII: &[u8] = r#"
-        Лорем ипсум долор сит амет, пер цлита поссит ех, ат мунере фабулас петентиум сит. Иус цу цибо саперет сцрипсерит, нец виси муциус лабитур ид. Ет хис нонумес нолуиссе дигниссим.
-        側経意責家方家閉討店暖育田庁載社転線宇。得君新術治温抗添代話考振投員殴大闘北裁。品間識部案代学凰処済準世一戸刻法分。悼測済諏計飯利安凶断理資沢同岩面文認革。内警格化再薬方久化体教御決数詭芸得筆代。
-        पढाए हिंदी रहारुप अनुवाद कार्यलय मुख्य संस्था सोफ़तवेर निरपेक्ष उनका आपके बाटते आशाआपस मुख्यतह उशकी करता। शुरुआत संस्था कुशलता मेंभटृ अनुवाद गएआप विशेष सकते परिभाषित लाभान्वित प्रति देकर समजते दिशामे प्राप्त जैसे वर्णन संस्थान निर्माता प्रव्रुति भाति चुनने उपलब्ध बेंगलूर अर्थपुर्ण
-        լոռեմ իպսում դոլոռ սիթ ամեթ, լաբոռե մոդեռաթիուս եթ հաս, պեռ ոմնիս լաթինե դիսպութաթիոնի աթ, վիս ֆեուգաիթ ծիվիբուս եխ. վիվենդում լաբոռամուս ելաբոռառեթ նամ ին.
-        국민경제의 발전을 위한 중요정책의 수립에 관하여 대통령의 자문에 응하기 위하여 국민경제자문회의를 둘 수 있다.
-        Λορεμ ιπσθμ δολορ σιτ αμετ, μει ιδ νοvθμ φαβελλασ πετεντιθμ vελ νε, ατ νισλ σονετ οπορτερε εθμ. Αλιι δοcτθσ μει ιδ, νο αθτεμ αθδιρε ιντερεσσετ μελ, δοcενδι cομμθνε οπορτεατ τε cθμ.
-        旅ロ京青利セムレ弱改フヨス波府かばぼ意送でぼ調掲察たス日西重ケアナ住橋ユムミク順待ふかんぼ人奨貯鏡すびそ。
-        غينيا واستمر العصبة ضرب قد. وباءت الأمريكي الأوربيين هو به،, هو العالم، الثقيلة بال. مع وايرلندا الأوروبيّون كان, قد بحق أسابيع العظمى واعتلاء. انه كل وإقامة المواد.
-        כדי יסוד מונחים מועמדים של, דת דפים מאמרשיחהצפה זאת. אתה דת שונה כלשהו, גם אחר ליום בשפות, או ניווט פולנית לחיבור ארץ. ויש בקלות ואמנות אירועים או, אל אינו כלכלה שתי.
-        "#.as_bytes();
-
-        static INPUT_ASCII: &[u8] = r#"
-        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
-        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
-        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
-        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
-        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
-        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
-        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
-        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
-        Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
-        "#.as_bytes();
-
-        #[bench]
-        fn non_ascii(b: &mut test::Bencher) {
-            let mut executor = NopExecutor::default();
-            let mut parser = Parser::new();
-
-            b.iter(|| {
-                parser.advance_utf8(&mut executor, INPUT_NON_ASCII);
-            })
-        }
-
-        #[bench]
-        fn ascii(b: &mut test::Bencher) {
-            let mut executor = NopExecutor::default();
-            let mut parser = Parser::new();
-
-            b.iter(|| {
-                parser.advance_utf8(&mut executor, INPUT_ASCII);
-            })
-        }
-    }
-}
+// #[cfg(test)]
+// mod bench {
+//
+//     use super::*;
+//
+//     extern crate test;
+//
+//     #[derive(Default)]
+//     struct NopExecutor {}
+//
+//     impl Executor for NopExecutor {
+//         fn print(&mut self, _c: char) {}
+//
+//         fn execute(&mut self, _byte: u8) {}
+//
+//         fn put(&mut self, _byte: u8) {}
+//
+//         fn hook(&mut self, _params: &Params, _intermediates: &[u8], _ignore: bool, _action: char) {}
+//
+//         fn unhook(&mut self) {}
+//
+//         fn osc_dispatch(&mut self, _params: &[&[u8]], _bell_terminated: bool) {}
+//
+//         fn esc_dispatch(&mut self, _intermediates: &[u8], _ignore: bool, _byte: u8) {}
+//
+//         fn csi_dispatch(
+//             &mut self,
+//             _params: &Params,
+//             _intermediates: &[u8],
+//             _ignore: bool,
+//             _action: char,
+//         ) {
+//         }
+//     }
+//
+//     const INPUT: &[u8] = include_bytes!("ansi/test.ansi");
+//
+//     #[bench]
+//     fn advance_batch(b: &mut test::Bencher) {
+//         let mut parser = Parser::new();
+//         let mut executor = NopExecutor::default();
+//
+//         b.iter(|| {
+//             parser.advance(&mut executor, INPUT);
+//         })
+//     }
+//
+//     #[bench]
+//     fn advance_sequential(b: &mut test::Bencher) {
+//         let mut parser = Parser::new();
+//         let mut executor = NopExecutor::default();
+//
+//         b.iter(|| {
+//             for byte in INPUT {
+//                 parser.advance(&mut executor, &[*byte]);
+//             }
+//         })
+//     }
+//
+//     mod utf8 {
+//         use super::*;
+//
+//         // TODO: make inputs of the same size
+//
+//         static INPUT_NON_ASCII: &[u8] = r#"
+//         Лорем ипсум долор сит амет, пер цлита поссит ех, ат мунере фабулас петентиум сит. Иус цу цибо саперет сцрипсерит, нец виси муциус лабитур ид. Ет хис нонумес нолуиссе дигниссим.
+//         側経意責家方家閉討店暖育田庁載社転線宇。得君新術治温抗添代話考振投員殴大闘北裁。品間識部案代学凰処済準世一戸刻法分。悼測済諏計飯利安凶断理資沢同岩面文認革。内警格化再薬方久化体教御決数詭芸得筆代。
+//         पढाए हिंदी रहारुप अनुवाद कार्यलय मुख्य संस्था सोफ़तवेर निरपेक्ष उनका आपके बाटते आशाआपस मुख्यतह उशकी करता। शुरुआत संस्था कुशलता मेंभटृ अनुवाद गएआप विशेष सकते परिभाषित लाभान्वित प्रति देकर समजते दिशामे प्राप्त जैसे वर्णन संस्थान निर्माता प्रव्रुति भाति चुनने उपलब्ध बेंगलूर अर्थपुर्ण
+//         լոռեմ իպսում դոլոռ սիթ ամեթ, լաբոռե մոդեռաթիուս եթ հաս, պեռ ոմնիս լաթինե դիսպութաթիոնի աթ, վիս ֆեուգաիթ ծիվիբուս եխ. վիվենդում լաբոռամուս ելաբոռառեթ նամ ին.
+//         국민경제의 발전을 위한 중요정책의 수립에 관하여 대통령의 자문에 응하기 위하여 국민경제자문회의를 둘 수 있다.
+//         Λορεμ ιπσθμ δολορ σιτ αμετ, μει ιδ νοvθμ φαβελλασ πετεντιθμ vελ νε, ατ νισλ σονετ οπορτερε εθμ. Αλιι δοcτθσ μει ιδ, νο αθτεμ αθδιρε ιντερεσσετ μελ, δοcενδι cομμθνε οπορτεατ τε cθμ.
+//         旅ロ京青利セムレ弱改フヨス波府かばぼ意送でぼ調掲察たス日西重ケアナ住橋ユムミク順待ふかんぼ人奨貯鏡すびそ。
+//         غينيا واستمر العصبة ضرب قد. وباءت الأمريكي الأوربيين هو به،, هو العالم، الثقيلة بال. مع وايرلندا الأوروبيّون كان, قد بحق أسابيع العظمى واعتلاء. انه كل وإقامة المواد.
+//         כדי יסוד מונחים מועמדים של, דת דפים מאמרשיחהצפה זאת. אתה דת שונה כלשהו, גם אחר ליום בשפות, או ניווט פולנית לחיבור ארץ. ויש בקלות ואמנות אירועים או, אל אינו כלכלה שתי.
+//         "#.as_bytes();
+//
+//         static INPUT_ASCII: &[u8] = r#"
+//         Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
+//         Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
+//         Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
+//         Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
+//         Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
+//         Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
+//         Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
+//         Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
+//         Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum tincidunt venenatis justo eu bibendum. Quisque blandit molestie mattis. Cras porta leo et magna aliquam, in facilisis felis dapibus.
+//         "#.as_bytes();
+//
+//         #[bench]
+//         fn non_ascii(b: &mut test::Bencher) {
+//             let mut executor = NopExecutor::default();
+//             let mut parser = Parser::new();
+//
+//             b.iter(|| {
+//                 parser.advance_utf8(&mut executor, INPUT_NON_ASCII);
+//             })
+//         }
+//
+//         #[bench]
+//         fn ascii(b: &mut test::Bencher) {
+//             let mut executor = NopExecutor::default();
+//             let mut parser = Parser::new();
+//
+//             b.iter(|| {
+//                 parser.advance_utf8(&mut executor, INPUT_ASCII);
+//             })
+//         }
+//     }
+// }
