@@ -25,7 +25,7 @@ impl UTF8Collector {
     }
 
     #[inline]
-    pub const fn reset(&mut self) {
+    pub const fn clear(&mut self) {
         self.len = 0;
         self.remaining_count = 0;
     }

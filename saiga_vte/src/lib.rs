@@ -191,7 +191,7 @@ pub struct Parser {
     intermediate_handler: Intermediates,
 
     ignoring: bool,
-    // utf8: utf8::UTF8Collector,
+    utf8: utf8::UTF8Collector,
 }
 
 impl Parser {
@@ -217,6 +217,11 @@ impl Parser {
 
             self.advance_utf8(executor, &remaining_bytes[..next_sequence_start]);
 
+            if self.utf8.remaining_count != 0 {
+                self.utf8.clear();
+                executor.print(char::REPLACEMENT_CHARACTER);
+            }
+
             remaining_bytes = &remaining_bytes[next_sequence_start..];
 
             let mut i = 0;
@@ -235,66 +240,47 @@ impl Parser {
     }
 
     fn advance_utf8(&mut self, executor: &mut impl Executor, bytes: &[u8]) {
-        match simdutf8::compat::from_utf8(bytes) {
-            Ok(s) => {
-                for c in s.chars() {
-                    executor.print(c);
+        let mut remaining_bytes = bytes;
+
+        while !remaining_bytes.is_empty() {
+            let want_bytes_count: usize;
+
+            if self.utf8.remaining_count != 0 {
+                want_bytes_count = self.utf8.remaining_count
+            } else if let Some(count) = utf8::expected_bytes_count(remaining_bytes[0]) {
+                // Optimize for ASCII
+                if count == 1 {
+                    executor.print(remaining_bytes[0] as char);
+                    remaining_bytes = &remaining_bytes[1..];
+                    continue;
                 }
+
+                want_bytes_count = count;
+            } else {
+                want_bytes_count = 1;
             }
-            Err(err) => {
-                let up_to = err.valid_up_to();
 
-                let s = unsafe { from_utf8_unchecked(&bytes[..up_to]) };
+            let bytes_count = want_bytes_count.min(remaining_bytes.len());
 
-                for c in s.chars() {
-                    executor.print(c);
-                }
-
-                executor.print(char::REPLACEMENT_CHARACTER);
+            for b in remaining_bytes[..bytes_count].iter() {
+                self.utf8.push(*b);
             }
+
+            self.utf8.remaining_count = want_bytes_count - bytes_count;
+
+            if self.utf8.remaining_count == 0 {
+                self.consume_utf8(executor);
+            }
+
+            remaining_bytes = &remaining_bytes[bytes_count..];
         }
-        //
-        // let mut remaining_bytes = bytes;
-        //
-        // while !remaining_bytes.is_empty() {
-        //     let want_bytes_count: usize;
-        //
-        //     if self.utf8.remaining_count != 0 {
-        //         want_bytes_count = self.utf8.remaining_count
-        //     } else if let Some(count) = utf8::expected_bytes_count(remaining_bytes[0]) {
-        //         // Optimize for ASCII
-        //         if count == 1 {
-        //             executor.print(remaining_bytes[0] as char);
-        //             remaining_bytes = &remaining_bytes[1..];
-        //             continue;
-        //         }
-        //
-        //         want_bytes_count = count;
-        //     } else {
-        //         want_bytes_count = 1;
-        //     }
-        //
-        //     let bytes_count = want_bytes_count.min(remaining_bytes.len());
-        //
-        //     for b in remaining_bytes[..bytes_count].iter() {
-        //         self.utf8.push(*b);
-        //     }
-        //
-        //     self.utf8.remaining_count = want_bytes_count - bytes_count;
-        //
-        //     if self.utf8.remaining_count == 0 {
-        //         self.consume_utf8(executor);
-        //     }
-        //
-        //     remaining_bytes = &remaining_bytes[bytes_count..];
-        // }
     }
 
-    // fn consume_utf8(&mut self, executor: &mut impl Executor) {
-    //     executor.print(self.utf8.char());
-    //
-    //     self.utf8.reset();
-    // }
+    fn consume_utf8(&mut self, executor: &mut impl Executor) {
+        executor.print(self.utf8.char());
+
+        self.utf8.clear();
+    }
 
     fn advance_sequence(&mut self, executor: &mut impl Executor, byte: u8) {
         let change = table::change_state(State::Anywhere, byte)
