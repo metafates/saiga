@@ -123,23 +123,18 @@ pub enum Action {
     Unhook,
 }
 
-#[inline]
-pub const fn pack(state: State, byte: u8) -> u16 {
-    ((state as u16) << 8) | byte as u16
-}
-
-static TABLE: [Option<(State, Action)>; u16::MAX as usize] = {
-    let mut table = [None; u16::MAX as usize];
+static TABLE: [[Option<(State, Action)>; 256]; 15] = {
+    let mut table = [[None; 256]; 15];
 
     let mut byte: u8 = 0;
 
     while byte != u8::MAX {
         let mut state_byte: u8 = 0;
 
-        while state_byte != State::Anywhere as u8 + 1 {
+        while state_byte != 15 {
             let state = State::from_byte(state_byte);
 
-            table[pack(state, byte) as usize] = change_state_raw(state, byte);
+            table[state as usize][byte as usize] = change_state_raw(state, byte);
 
             state_byte += 1;
         }
@@ -152,7 +147,7 @@ static TABLE: [Option<(State, Action)>; u16::MAX as usize] = {
 
 #[inline(always)]
 pub const fn change_state(state: State, byte: u8) -> Option<(State, Action)> {
-    TABLE[pack(state, byte) as usize]
+    TABLE[state as usize][byte as usize]
 }
 
 #[inline]
