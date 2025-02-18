@@ -128,9 +128,7 @@ pub const fn pack(state: State, byte: u8) -> u16 {
     ((state as u16) << 8) | byte as u16
 }
 
-static TABLE: [Option<(State, Action)>; u16::MAX as usize] = build_table();
-
-const fn build_table() -> [Option<(State, Action)>; u16::MAX as usize] {
+static TABLE: [Option<(State, Action)>; u16::MAX as usize] = {
     let mut table = [None; u16::MAX as usize];
 
     let mut byte: u8 = 0;
@@ -150,9 +148,9 @@ const fn build_table() -> [Option<(State, Action)>; u16::MAX as usize] {
     }
 
     table
-}
+};
 
-#[inline]
+#[inline(always)]
 pub const fn change_state(state: State, byte: u8) -> Option<(State, Action)> {
     TABLE[pack(state, byte) as usize]
 }

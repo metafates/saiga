@@ -156,7 +156,7 @@ impl Parser {
         Default::default()
     }
 
-    // #[inline]
+    #[inline]
     pub fn advance(&mut self, performer: &mut Performer, bytes: &[u8]) {
         let mut i = 0;
 
@@ -166,12 +166,12 @@ impl Parser {
         }
 
         while i != bytes.len() {
-            match self.state {
-                State::Ground => i += self.advance_ground(performer, &bytes[i..]),
-                _ => {
-                    self.change_state(performer, bytes[i]);
-                    i += 1;
-                }
+            if self.state == State::Ground {
+                i += self.advance_ground(performer, &bytes[i..])
+            } else {
+                let byte = bytes[i];
+                self.change_state(performer, byte);
+                i += 1;
             }
         }
     }
