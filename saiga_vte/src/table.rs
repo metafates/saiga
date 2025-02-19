@@ -97,6 +97,8 @@ pub enum Action {
     /// There is therefore no need to buffer characters until the end of the control string is recognised.
     OscPut,
 
+    OscPutParam,
+
     /// When the control function OSC is recognised, this action initializes an external parser
     /// (the “OSC Handler”) to handle the characters from the control string.
     ///
@@ -195,35 +197,22 @@ const fn change_state_raw(state: State, byte: u8) -> Option<(State, Action)> {
     match state {
         Anywhere => match byte {
             0x18 | 0x1A => Some((Ground, Execute)),
-            // 0x18 | 0x1A | 0x80..=0x8F | 0x91..=0x97 | 0x99 | 0x9A => Some((Ground, Execute)),
             0x1B => Some((Escape, Ignore)),
-            // 0x9C => Some((Ground, Ignore)),
-            // 0x98 | 0x9E | 0x9F => Some((SosPmApcString, Ignore)),
-            // 0x90 => Some((DcsEntry, Ignore)),
-            // 0x9D => Some((OscString, Ignore)),
-            // 0x9B => Some((CsiEntry, Ignore)),
             _ => None,
         },
 
-        Ground => match byte {
-            0x00..=0x17 | 0x19 | 0x1C..=0x1F => Some((Anywhere, Execute)),
-            0x20..=0x7F => Some((Anywhere, Print)),
-
-            _ => None,
-        },
+        Ground => None,
 
         Escape => match byte {
             0x00..=0x17 | 0x19 | 0x1C..=0x1F => Some((Anywhere, Execute)),
-            0x7F => Some((Anywhere, Ignore)),
-
-            0x5D => Some((OscString, Ignore)),
-            0x50 => Some((DcsEntry, Ignore)),
-            0x5B => Some((CsiEntry, Ignore)),
-            0x58 | 0x5E | 0x5F => Some((SosPmApcString, Ignore)),
             0x20..=0x2F => Some((EscapeIntermediate, Collect)),
-            0x30..=0x4F | 0x51..=0x57 | 0x59 | 0x5A | 0x5C | 0x60..=0x7E => {
+            0x30..=0x4F | 0x51..=0x57 | 0x59..=0x5A | 0x5C | 0x60..=0x7E => {
                 Some((Ground, EscDispatch))
             }
+            0x50 => Some((DcsEntry, Ignore)),
+            0x58 | 0x5E..=0x5F => Some((SosPmApcString, Ignore)),
+            0x5B => Some((CsiEntry, Ignore)),
+            0x5D => Some((OscString, Ignore)),
 
             _ => None,
         },
@@ -231,7 +220,6 @@ const fn change_state_raw(state: State, byte: u8) -> Option<(State, Action)> {
         EscapeIntermediate => match byte {
             0x00..=0x17 | 0x19 | 0x1C..=0x1F => Some((Anywhere, Execute)),
             0x20..=0x2F => Some((Anywhere, Collect)),
-            0x7F => Some((Anywhere, Ignore)),
             0x30..=0x7E => Some((Ground, EscDispatch)),
 
             _ => None,
@@ -239,7 +227,6 @@ const fn change_state_raw(state: State, byte: u8) -> Option<(State, Action)> {
 
         CsiEntry => match byte {
             0x00..=0x17 | 0x19 | 0x1C..=0x1F => Some((Anywhere, Execute)),
-            0x7F => Some((Anywhere, Ignore)),
             0x20..=0x2F => Some((CsiIntermediate, Collect)),
             0x40..=0x7E => Some((Ground, CsiDispatch)),
 
@@ -263,8 +250,6 @@ const fn change_state_raw(state: State, byte: u8) -> Option<(State, Action)> {
             0x3A => Some((Anywhere, Subparam)),
             0x3B => Some((Anywhere, Param)),
 
-            0x7F => Some((Anywhere, Ignore)),
-
             0x3C..=0x3F => Some((CsiIgnore, Ignore)),
             0x20..=0x2F => Some((CsiIntermediate, Collect)),
             0x40..=0x7E => Some((Ground, CsiDispatch)),
@@ -275,7 +260,6 @@ const fn change_state_raw(state: State, byte: u8) -> Option<(State, Action)> {
         CsiIntermediate => match byte {
             0x00..=0x17 | 0x19 | 0x1C..=0x1F => Some((Anywhere, Execute)),
             0x20..=0x2F => Some((Anywhere, Collect)),
-            0x7F => Some((Anywhere, Ignore)),
             0x30..=0x3F => Some((CsiIgnore, Ignore)),
             0x40..=0x7E => Some((Ground, CsiDispatch)),
 
@@ -284,75 +268,60 @@ const fn change_state_raw(state: State, byte: u8) -> Option<(State, Action)> {
 
         CsiIgnore => match byte {
             0x00..=0x17 | 0x19 | 0x1C..=0x1F => Some((Anywhere, Execute)),
-            0x20..=0x3F | 0x7F => Some((Anywhere, Ignore)),
             0x40..=0x7E => Some((Ground, Ignore)),
 
             _ => None,
         },
 
         DcsEntry => match byte {
-            0x00..=0x17 | 0x19 | 0x1C..=0x1F | 0x7F => Some((Anywhere, Ignore)),
             0x20..=0x2F => Some((DcsIntermediate, Collect)),
-            0x30..=0x39 | 0x3B => Some((DcsParam, Param)),
+            0x30..=0x39 => Some((DcsParam, NextParam)),
+            0x3A => Some((DcsParam, Subparam)),
+            0x3B => Some((DcsParam, Param)),
             0x3C..=0x3F => Some((DcsParam, Collect)),
-            0x40..=0x7E => Some((DcsPassthrough, Ignore)),
-            0x3A => Some((DcsIgnore, Ignore)),
+            0x40..=0x7E => Some((DcsPassthrough, Hook)),
 
             _ => None,
         },
 
         DcsParam => match byte {
-            0x00..=0x17 | 0x19 | 0x1C..=0x1F | 0x7F => Some((Anywhere, Ignore)),
-            0x30..=0x39 | 0x3B => Some((Anywhere, Param)),
-            0x3A | 0x3C..=0x3F => Some((DcsIgnore, Ignore)),
             0x20..=0x2F => Some((DcsIntermediate, Collect)),
-            0x40..=0x7E => Some((DcsPassthrough, Ignore)),
+            0x30..=0x39 => Some((Anywhere, NextParam)),
+            0x3A => Some((Anywhere, Subparam)),
+            0x3B => Some((Anywhere, Param)),
+            0x3C..=0x3F => Some((DcsIgnore, Ignore)),
+            0x40..=0x7E => Some((DcsPassthrough, Hook)),
 
             _ => None,
         },
 
         DcsIntermediate => match byte {
-            0x00..=0x17 | 0x19 | 0x1C..=0x1F | 0x7F => Some((Anywhere, Ignore)),
             0x20..=0x2F => Some((Anywhere, Collect)),
-
             0x30..=0x3F => Some((DcsIgnore, Ignore)),
-            0x40..=0x7E => Some((DcsPassthrough, Ignore)),
+            0x40..=0x7E => Some((DcsPassthrough, Hook)),
 
             _ => None,
         },
 
         DcsPassthrough => match byte {
-            0x00..=0x17 | 0x19 | 0x1C..=0x1F | 0x20..=0x7E => Some((Anywhere, Put)),
-            0x7F => Some((Anywhere, Ignore)),
+            0x00..=0x17 | 0x19 | 0x1C..=0x7E => Some((Anywhere, Put)),
+            0x18 | 0x1A => Some((Ground, Execute)),
 
             0x9C => Some((Ground, Ignore)),
 
             _ => None,
         },
 
-        DcsIgnore => match byte {
-            0x00..=0x17 | 0x19 | 0x1C..=0x1F | 0x20..=0x7F => Some((Anywhere, Ignore)),
-
-            0x9C => Some((Ground, Ignore)),
-
-            _ => None,
-        },
+        DcsIgnore => None,
 
         OscString => match byte {
             0x07 => Some((Ground, Ignore)),
             0x18 | 0x1A => Some((Ground, Execute)),
-            0x20..=0xFF => Some((Anywhere, OscPut)),
+            0x3B => Some((Anywhere, OscPutParam)),
 
-            // 0x00..=0x06 | 0x08..=0x17 | 0x19 | 0x1C..=0x1F => Some((Anywhere, Ignore)),
-            _ => None,
+            _ => Some((Anywhere, OscPut)),
         },
 
-        SosPmApcString => match byte {
-            0x00..=0x17 | 0x19 | 0x1C..=0x1F | 0x20..=0x7F => Some((Anywhere, Ignore)),
-
-            0x9C => Some((Ground, Ignore)),
-
-            _ => None,
-        },
+        SosPmApcString => None,
     }
 }

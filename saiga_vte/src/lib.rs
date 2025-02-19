@@ -102,14 +102,15 @@ impl<P: Perform> Parser<P> {
         1
     }
 
-    const ACTIONS: [fn(&mut Self, &mut P, u8); 16] = {
-        let mut result: [fn(&mut Self, &mut P, u8); 16] = [Self::action_nop; 16];
+    const ACTIONS: [fn(&mut Self, &mut P, u8); 17] = {
+        let mut result: [fn(&mut Self, &mut P, u8); 17] = [Self::action_nop; 17];
 
         result[Action::Print as usize] = Self::action_print;
         result[Action::Put as usize] = Self::action_put;
         result[Action::Execute as usize] = Self::action_execute;
         result[Action::OscStart as usize] = Self::action_osc_start;
         result[Action::OscPut as usize] = Self::action_osc_put;
+        result[Action::OscPutParam as usize] = Self::action_osc_put_param;
         result[Action::OscEnd as usize] = Self::action_osc_end;
         result[Action::Hook as usize] = Self::action_hook;
         result[Action::Unhook as usize] = Self::action_unhook;
@@ -371,6 +372,11 @@ impl<P: Perform> Parser<P> {
 
     #[inline(always)]
     fn action_nop(_parser: &mut Self, _performer: &mut P, _byte: u8) {}
+
+    #[inline(always)]
+    fn action_osc_put_param(parser: &mut Self, _performer: &mut P, _byte: u8) {
+        parser.osc_put_param()
+    }
 
     #[inline(always)]
     fn action_print(_parser: &mut Self, performer: &mut P, byte: u8) {
