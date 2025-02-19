@@ -420,7 +420,7 @@ static ACTIONS: [fn(&mut Parser, &mut Performer, u8); 14] = {
     result
 };
 
-#[inline]
+#[inline(always)]
 fn action_nop(_parser: &mut Parser, _performer: &mut Performer, _byte: u8) {}
 
 #[inline(always)]
@@ -428,12 +428,12 @@ fn action_print(_parser: &mut Parser, performer: &mut Performer, byte: u8) {
     performer.print(byte as char)
 }
 
-#[inline]
+#[inline(always)]
 fn action_put(_parser: &mut Parser, performer: &mut Performer, byte: u8) {
     performer.put(byte)
 }
 
-#[inline]
+#[inline(always)]
 fn action_execute(_parser: &mut Parser, performer: &mut Performer, byte: u8) {
     performer.execute(byte)
 }
@@ -444,7 +444,7 @@ fn action_osc_start(parser: &mut Parser, _performer: &mut Performer, _byte: u8) 
     parser.osc_num_params = 0;
 }
 
-#[inline]
+#[inline(always)]
 fn action_osc_put(parser: &mut Parser, _performer: &mut Performer, byte: u8) {
     parser.osc_raw.push(byte);
 }
@@ -478,7 +478,7 @@ fn action_unhook(_parser: &mut Parser, performer: &mut Performer, _byte: u8) {
     performer.unhook()
 }
 
-#[inline(always)]
+#[inline]
 fn action_param(parser: &mut Parser, _performer: &mut Performer, _byte: u8) {
     if parser.params.is_full() {
         parser.ignoring = true;
@@ -488,7 +488,7 @@ fn action_param(parser: &mut Parser, _performer: &mut Performer, _byte: u8) {
     }
 }
 
-#[inline(always)]
+#[inline]
 fn action_csi_dispatch(parser: &mut Parser, performer: &mut Performer, byte: u8) {
     if parser.params.is_full() {
         parser.ignoring = true;
@@ -504,7 +504,7 @@ fn action_csi_dispatch(parser: &mut Parser, performer: &mut Performer, byte: u8)
     );
 }
 
-#[inline(always)]
+#[inline]
 fn action_collect(parser: &mut Parser, _performer: &mut Performer, byte: u8) {
     if parser.intermediate_idx == MAX_INTERMEDIATES {
         parser.ignoring = true;
@@ -519,7 +519,7 @@ fn action_esc_dispatch(parser: &mut Parser, performer: &mut Performer, byte: u8)
     performer.esc_dispatch(parser.intermediates(), parser.ignoring, byte);
 }
 
-#[inline(always)]
+#[inline]
 fn action_clear(parser: &mut Parser, _performer: &mut Performer, _byte: u8) {
     parser.param = 0;
     parser.params.clear();

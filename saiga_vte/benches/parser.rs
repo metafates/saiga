@@ -140,7 +140,7 @@ fn parser_advance(c: &mut Criterion) {
 
 criterion_group! {
     name = benches;
-    config = Criterion::default().measurement_time(Duration::from_secs(10)).with_profiler(PProfProfiler::new(2000, Output::Flamegraph(None)));
+    config = Criterion::default().measurement_time(Duration::from_secs(10)).with_profiler(PProfProfiler::new(50_000, Output::Flamegraph(None)));
     targets = parser_advance, alacritty_vte
 }
 
