@@ -108,6 +108,10 @@ pub enum Action {
     /// sequence or device control sequence and builds a list of parameters.
     Param,
 
+    Subparam,
+
+    NextParam,
+
     /// The current code should be mapped to a glyph according to the
     /// character set mappings and shift states in effect, and that glyph should be displayed.
     Print,
@@ -153,7 +157,7 @@ pub const fn change_state(state: State, byte: u8) -> Option<(State, Action)> {
 #[inline(always)]
 pub const fn state_exit_action(state: State) -> Action {
     const LEN: usize = State::Anywhere as usize + 1;
-    static ACTIONS: [Action; LEN] = {
+    const ACTIONS: [Action; LEN] = {
         let mut result = [Action::Ignore; LEN];
 
         result[State::DcsPassthrough as usize] = Action::Unhook;
@@ -168,7 +172,7 @@ pub const fn state_exit_action(state: State) -> Action {
 #[inline(always)]
 pub const fn state_entry_action(state: State) -> Action {
     const LEN: usize = State::Anywhere as usize + 1;
-    static ACTIONS: [Action; LEN] = {
+    const ACTIONS: [Action; LEN] = {
         let mut result = [Action::Ignore; LEN];
 
         result[State::CsiEntry as usize] = Action::Clear;
@@ -190,14 +194,14 @@ const fn change_state_raw(state: State, byte: u8) -> Option<(State, Action)> {
 
     match state {
         Anywhere => match byte {
-            0x18 | 0x1A | 0x80..=0x8F | 0x91..=0x97 | 0x99 | 0x9A => Some((Ground, Execute)),
+            0x18 | 0x1A => Some((Ground, Execute)),
+            // 0x18 | 0x1A | 0x80..=0x8F | 0x91..=0x97 | 0x99 | 0x9A => Some((Ground, Execute)),
             0x1B => Some((Escape, Ignore)),
-            0x9C => Some((Ground, Ignore)),
-            0x98 | 0x9E | 0x9F => Some((SosPmApcString, Ignore)),
-            0x90 => Some((DcsEntry, Ignore)),
-            0x9D => Some((OscString, Ignore)),
-            0x9B => Some((CsiEntry, Ignore)),
-
+            // 0x9C => Some((Ground, Ignore)),
+            // 0x98 | 0x9E | 0x9F => Some((SosPmApcString, Ignore)),
+            // 0x90 => Some((DcsEntry, Ignore)),
+            // 0x9D => Some((OscString, Ignore)),
+            // 0x9B => Some((CsiEntry, Ignore)),
             _ => None,
         },
 
@@ -241,7 +245,10 @@ const fn change_state_raw(state: State, byte: u8) -> Option<(State, Action)> {
 
             // 0x3A ':' (colon) should result CsiIgnore state according to the parser
             // specification. However, this parser implements subparameters separated by colon
-            0x30..=0x3B => Some((CsiParam, Param)),
+            0x30..=0x39 => Some((CsiParam, NextParam)),
+            0x3A => Some((CsiParam, Subparam)),
+            0x3B => Some((CsiParam, Param)),
+
             0x3C..=0x3F => Some((CsiParam, Collect)),
 
             _ => None,
@@ -252,7 +259,9 @@ const fn change_state_raw(state: State, byte: u8) -> Option<(State, Action)> {
 
             // 0x3A ':' (colon) should result CsiIgnore state according to the parser
             // specification. However, our parser implements subparameters separated by colon
-            0x30..=0x3B => Some((Anywhere, Param)),
+            0x30..=0x39 => Some((Anywhere, NextParam)),
+            0x3A => Some((Anywhere, Subparam)),
+            0x3B => Some((Anywhere, Param)),
 
             0x7F => Some((Anywhere, Ignore)),
 
@@ -331,9 +340,10 @@ const fn change_state_raw(state: State, byte: u8) -> Option<(State, Action)> {
 
         OscString => match byte {
             0x07 => Some((Ground, Ignore)),
-            0x00..=0x06 | 0x08..=0x17 | 0x19 | 0x1C..=0x1F => Some((Anywhere, Ignore)),
+            0x18 | 0x1A => Some((Ground, Execute)),
             0x20..=0xFF => Some((Anywhere, OscPut)),
 
+            // 0x00..=0x06 | 0x08..=0x17 | 0x19 | 0x1C..=0x1F => Some((Anywhere, Ignore)),
             _ => None,
         },
 
