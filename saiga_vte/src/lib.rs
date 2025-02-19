@@ -152,8 +152,12 @@ pub struct Parser {
 }
 
 impl Parser {
+    #[inline]
     pub fn new() -> Self {
-        Default::default()
+        Self {
+            osc_raw: Vec::with_capacity(1024),
+            ..Default::default()
+        }
     }
 
     #[inline]
@@ -197,16 +201,15 @@ impl Parser {
         match simdutf8::compat::from_utf8(&bytes[..plain_chars]) {
             Ok(parsed) => {
                 Self::ground_dispatch(performer, parsed);
-                let mut processed = plain_chars;
 
                 // If there's another character, it must be escape so process it directly.
-                if processed < num_bytes {
+                if plain_chars < num_bytes {
                     self.state = State::Escape;
                     self.reset_params();
-                    processed += 1;
+                    plain_chars + 1
+                } else {
+                    plain_chars
                 }
-
-                processed
             }
             // Handle invalid and partial utf8.
             Err(err) => {
@@ -284,38 +287,51 @@ impl Parser {
             return;
         };
 
-        match state {
-            State::Anywhere => {
-                self.execute_action(performer, action, byte);
-            }
-            state => {
-                self.execute_state_entry_action(performer, byte);
+        if state == State::Anywhere {
+            self.execute_action(performer, action, byte);
+        } else {
+            self.execute_state_entry_action(performer, byte);
 
-                self.execute_action(performer, action, byte);
+            self.execute_action(performer, action, byte);
 
-                self.state = state;
+            self.state = state;
 
-                self.execute_state_exit_action(performer, byte);
-            }
+            self.execute_state_exit_action(performer, byte);
         }
     }
 
     #[inline(always)]
     fn execute_state_exit_action(&mut self, performer: &mut Performer, byte: u8) {
-        let action = table::state_exit_action(self.state);
-
-        self.execute_action(performer, action, byte);
+        self.execute_action(performer, table::state_exit_action(self.state), byte);
     }
 
     #[inline(always)]
     fn execute_state_entry_action(&mut self, performer: &mut Performer, byte: u8) {
-        let action = table::state_entry_action(self.state);
-
-        self.execute_action(performer, action, byte);
+        self.execute_action(performer, table::state_entry_action(self.state), byte);
     }
 
     #[inline(always)]
     fn execute_action(&mut self, performer: &mut Performer, action: Action, byte: u8) {
+        static ACTIONS: [fn(&mut Parser, &mut Performer, u8); 14] = {
+            let mut result: [fn(&mut Parser, &mut Performer, u8); 14] = [action_nop; 14];
+
+            result[Action::Print as usize] = action_print;
+            result[Action::Put as usize] = action_put;
+            result[Action::Execute as usize] = action_execute;
+            result[Action::OscStart as usize] = action_osc_start;
+            result[Action::OscPut as usize] = action_osc_put;
+            result[Action::OscEnd as usize] = action_osc_end;
+            result[Action::Hook as usize] = action_hook;
+            result[Action::Unhook as usize] = action_unhook;
+            result[Action::Param as usize] = action_param;
+            result[Action::CsiDispatch as usize] = action_csi_dispatch;
+            result[Action::Collect as usize] = action_collect;
+            result[Action::EscDispatch as usize] = action_esc_dispatch;
+            result[Action::Clear as usize] = action_clear;
+
+            result
+        };
+
         ACTIONS[action as usize](self, performer, byte)
     }
 
@@ -399,26 +415,6 @@ impl Parser {
         self.osc_num_params += 1;
     }
 }
-
-static ACTIONS: [fn(&mut Parser, &mut Performer, u8); 14] = {
-    let mut result: [fn(&mut Parser, &mut Performer, u8); 14] = [action_nop; 14];
-
-    result[Action::Print as usize] = action_print;
-    result[Action::Put as usize] = action_put;
-    result[Action::Execute as usize] = action_execute;
-    result[Action::OscStart as usize] = action_osc_start;
-    result[Action::OscPut as usize] = action_osc_put;
-    result[Action::OscEnd as usize] = action_osc_end;
-    result[Action::Hook as usize] = action_hook;
-    result[Action::Unhook as usize] = action_unhook;
-    result[Action::Param as usize] = action_param;
-    result[Action::CsiDispatch as usize] = action_csi_dispatch;
-    result[Action::Collect as usize] = action_collect;
-    result[Action::EscDispatch as usize] = action_esc_dispatch;
-    result[Action::Clear as usize] = action_clear;
-
-    result
-};
 
 #[inline(always)]
 fn action_nop(_parser: &mut Parser, _performer: &mut Performer, _byte: u8) {}

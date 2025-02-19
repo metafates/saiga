@@ -123,34 +123,34 @@ pub enum Action {
     Unhook,
 }
 
-static TABLE: [[Option<(State, Action)>; 256]; 15] = {
-    let mut table = [[None; 256]; 15];
-
-    let mut byte: u8 = 0;
-
-    while byte != u8::MAX {
-        let mut state_byte: u8 = 0;
-
-        while state_byte != 15 {
-            let state = State::from_byte(state_byte);
-
-            table[state as usize][byte as usize] = change_state_raw(state, byte);
-
-            state_byte += 1;
-        }
-
-        byte += 1;
-    }
-
-    table
-};
-
 #[inline(always)]
 pub const fn change_state(state: State, byte: u8) -> Option<(State, Action)> {
-    TABLE[state as usize][byte as usize]
+    static CHANGES: [[Option<(State, Action)>; 256]; 15] = {
+        let mut table = [[None; 256]; 15];
+
+        let mut byte: u8 = 0;
+
+        while byte != u8::MAX {
+            let mut state_byte: u8 = 0;
+
+            while state_byte != 15 {
+                let state = State::from_byte(state_byte);
+
+                table[state as usize][byte as usize] = change_state_raw(state, byte);
+
+                state_byte += 1;
+            }
+
+            byte += 1;
+        }
+
+        table
+    };
+
+    CHANGES[state as usize][byte as usize]
 }
 
-#[inline]
+#[inline(always)]
 pub const fn state_exit_action(state: State) -> Action {
     const LEN: usize = State::Anywhere as usize + 1;
     static ACTIONS: [Action; LEN] = {
@@ -165,7 +165,7 @@ pub const fn state_exit_action(state: State) -> Action {
     ACTIONS[state as usize]
 }
 
-#[inline]
+#[inline(always)]
 pub const fn state_entry_action(state: State) -> Action {
     const LEN: usize = State::Anywhere as usize + 1;
     static ACTIONS: [Action; LEN] = {
