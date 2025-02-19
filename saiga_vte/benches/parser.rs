@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use vte::{Params, Perform};
+use pprof::criterion::{Output, PProfProfiler};
 
 #[derive(Default)]
 struct NopPerformer {}
@@ -32,7 +32,8 @@ impl vte::Perform for NopPerformer {
     }
 }
 
-const INPUT: &[u8] = include_bytes!("bench.ansi");
+const BAT_OUTPUT: &[u8] = include_bytes!("bat.ansi");
+const BIG_UTF8: &[u8] = include_bytes!("utf8.ansi");
 
 fn alacritty_vte(c: &mut Criterion) {
     let mut parser = vte::Parser::new();
@@ -42,13 +43,25 @@ fn alacritty_vte(c: &mut Criterion) {
 
     group.bench_function("batch", |b| {
         b.iter(|| {
-            parser.advance(&mut performer, black_box(INPUT));
+            parser.advance(&mut performer, black_box(BAT_OUTPUT));
+        });
+    });
+    group.bench_function("batch utf8", |b| {
+        b.iter(|| {
+            parser.advance(&mut performer, black_box(BIG_UTF8));
         });
     });
 
     group.bench_function("chunks", |b| {
         b.iter(|| {
-            for chunk in INPUT.chunks(256) {
+            for chunk in BAT_OUTPUT.chunks(256) {
+                parser.advance(&mut performer, black_box(chunk));
+            }
+        });
+    });
+    group.bench_function("chunks utf8", |b| {
+        b.iter(|| {
+            for chunk in BIG_UTF8.chunks(256) {
                 parser.advance(&mut performer, black_box(chunk));
             }
         });
@@ -56,7 +69,14 @@ fn alacritty_vte(c: &mut Criterion) {
 
     group.bench_function("sequential", |b| {
         b.iter(|| {
-            for &byte in INPUT {
+            for &byte in BAT_OUTPUT {
+                parser.advance(&mut performer, black_box(&[byte]));
+            }
+        })
+    });
+    group.bench_function("sequential utf8", |b| {
+        b.iter(|| {
+            for &byte in BIG_UTF8 {
                 parser.advance(&mut performer, black_box(&[byte]));
             }
         })
@@ -73,13 +93,27 @@ fn parser_advance(c: &mut Criterion) {
 
     group.bench_function("batch", |b| {
         b.iter(|| {
-            parser.advance(&mut performer, black_box(INPUT));
+            parser.advance(&mut performer, black_box(BAT_OUTPUT));
+        });
+    });
+
+    group.bench_function("batch utf8", |b| {
+        b.iter(|| {
+            parser.advance(&mut performer, black_box(BIG_UTF8));
         });
     });
 
     group.bench_function("chunks", |b| {
         b.iter(|| {
-            for chunk in INPUT.chunks(256) {
+            for chunk in BAT_OUTPUT.chunks(256) {
+                parser.advance(&mut performer, black_box(chunk));
+            }
+        });
+    });
+
+    group.bench_function("chunks utf8", |b| {
+        b.iter(|| {
+            for chunk in BIG_UTF8.chunks(256) {
                 parser.advance(&mut performer, black_box(chunk));
             }
         });
@@ -87,7 +121,15 @@ fn parser_advance(c: &mut Criterion) {
 
     group.bench_function("sequential", |b| {
         b.iter(|| {
-            for &byte in INPUT {
+            for &byte in BAT_OUTPUT {
+                parser.advance(&mut performer, black_box(&[byte]));
+            }
+        })
+    });
+
+    group.bench_function("sequential utf8", |b| {
+        b.iter(|| {
+            for &byte in BIG_UTF8 {
                 parser.advance(&mut performer, black_box(&[byte]));
             }
         })
@@ -98,7 +140,7 @@ fn parser_advance(c: &mut Criterion) {
 
 criterion_group! {
     name = benches;
-    config = Criterion::default().measurement_time(Duration::from_secs(10));
+    config = Criterion::default().measurement_time(Duration::from_secs(10)).with_profiler(PProfProfiler::new(2000, Output::Flamegraph(None)));
     targets = parser_advance, alacritty_vte
 }
 

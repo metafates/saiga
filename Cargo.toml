@@ -27,6 +27,3 @@ codegen-units = 1
 # Remember how Rust by default uses stack unwinding (on the most common platforms)?
 # That costs performance! Let’s skip stack traces and the ability to catch panics for reduced code size and better cache usage
 panic = "abort"
-
-# Strip debug and symbols info to reduce binary size
-strip = true
