@@ -101,29 +101,6 @@ impl<P: Perform> Parser<P> {
         1
     }
 
-    const ACTIONS: [fn(&mut Self, &mut P, u8); 17] = {
-        let mut result: [fn(&mut Self, &mut P, u8); 17] = [Self::action_nop; 17];
-
-        result[Action::Print as usize] = Self::action_print;
-        result[Action::Put as usize] = Self::action_put;
-        result[Action::Execute as usize] = Self::action_execute;
-        result[Action::OscStart as usize] = Self::action_osc_start;
-        result[Action::OscPut as usize] = Self::action_osc_put;
-        result[Action::OscPutParam as usize] = Self::action_osc_put_param;
-        result[Action::OscEnd as usize] = Self::action_osc_end;
-        result[Action::Hook as usize] = Self::action_hook;
-        result[Action::Unhook as usize] = Self::action_unhook;
-        result[Action::Param as usize] = Self::action_param;
-        result[Action::ParamNext as usize] = Self::action_param_next;
-        result[Action::Subparam as usize] = Self::action_subparam;
-        result[Action::CsiDispatch as usize] = Self::action_csi_dispatch;
-        result[Action::Collect as usize] = Self::action_collect;
-        result[Action::EscDispatch as usize] = Self::action_esc_dispatch;
-        result[Action::Clear as usize] = Self::action_clear;
-
-        result
-    };
-
     #[inline]
     pub fn new() -> Self {
         Default::default()
@@ -142,11 +119,11 @@ impl<P: Perform> Parser<P> {
             i += (self.next_step)(self, performer, &bytes[i..]);
 
             // if self.state == State::Ground {
-            // i += self.advance_ground(performer, &bytes[i..])
+            //     i += self.advance_ground(performer, &bytes[i..])
             // } else {
-            // let byte = bytes[i];
-            // self.change_state(performer, byte);
-            // i += 1;
+            //     let byte = bytes[i];
+            //     self.change_state(performer, byte);
+            //     i += 1;
             // }
         }
     }
@@ -248,12 +225,7 @@ impl<P: Perform> Parser<P> {
 
     #[inline]
     fn change_state(&mut self, performer: &mut P, byte: u8) {
-        let change = table::change_state(State::Anywhere, byte)
-            .or_else(|| table::change_state(self.state, byte));
-
-        let Some((state, action)) = change else {
-            return;
-        };
+        let (state, action) = table::change_state(self.state, byte);
 
         if state == State::Anywhere {
             self.execute_action(performer, action, byte);
@@ -280,7 +252,27 @@ impl<P: Perform> Parser<P> {
 
     #[inline(always)]
     fn execute_action(&mut self, performer: &mut P, action: Action, byte: u8) {
-        Self::ACTIONS[action as usize](self, performer, byte)
+        use Action::*;
+
+        match action {
+            Print => self.action_print(performer, byte),
+            Put => self.action_put(performer, byte),
+            Execute => self.action_execute(performer, byte),
+            OscStart => self.action_osc_start(performer, byte),
+            OscPut => self.action_osc_put(performer, byte),
+            OscPutParam => self.action_osc_put_param(performer, byte),
+            OscEnd => self.action_osc_end(performer, byte),
+            Hook => self.action_hook(performer, byte),
+            Unhook => self.action_unhook(performer, byte),
+            Param => self.action_param(performer, byte),
+            ParamNext => self.action_param_next(performer, byte),
+            Subparam => self.action_subparam(performer, byte),
+            CsiDispatch => self.action_csi_dispatch(performer, byte),
+            Collect => self.action_collect(performer, byte),
+            EscDispatch => self.action_esc_dispatch(performer, byte),
+            Clear => self.action_clear(performer, byte),
+            Ignore => (),
+        }
     }
 
     /// Advance the parser while processing a partial utf8 codepoint.

@@ -28,7 +28,7 @@ pub enum State {
 }
 
 impl State {
-    const fn from_byte(byte: u8) -> Self {
+    pub(crate) const fn from_byte(byte: u8) -> Self {
         use State::*;
 
         match byte {
@@ -130,9 +130,9 @@ pub enum Action {
 }
 
 #[inline(always)]
-pub const fn change_state(state: State, byte: u8) -> Option<(State, Action)> {
-    static CHANGES: [[Option<(State, Action)>; 256]; 15] = {
-        let mut table = [[None; 256]; 15];
+pub const fn change_state(state: State, byte: u8) -> (State, Action) {
+    static CHANGES: [[(State, Action); 256]; 15] = {
+        let mut table = [[(State::Anywhere, Action::Ignore); 256]; 15];
 
         let mut byte: u8 = 0;
 
@@ -142,7 +142,11 @@ pub const fn change_state(state: State, byte: u8) -> Option<(State, Action)> {
             while state_byte != 15 {
                 let state = State::from_byte(state_byte);
 
-                table[state as usize][byte as usize] = change_state_raw(state, byte);
+                if let Some(change) = change_state_raw(State::Anywhere, byte) {
+                    table[state as usize][byte as usize] = change;
+                } else if let Some(change) = change_state_raw(state, byte) {
+                    table[state as usize][byte as usize] = change;
+                }
 
                 state_byte += 1;
             }
