@@ -54,7 +54,7 @@ pub trait Perform {
 const MAX_INTERMEDIATES: usize = 2;
 const MAX_OSC_PARAMS: usize = 16;
 
-pub struct Parser<P: Perform> {
+pub struct Parser {
     state: State,
 
     intermediates: [u8; MAX_INTERMEDIATES],
@@ -72,10 +72,10 @@ pub struct Parser<P: Perform> {
     partial_utf8: [u8; 4],
     partial_utf8_len: usize,
 
-    next_step: fn(&mut Self, &mut P, &[u8]) -> usize,
+    next_step: AdvanceStep,
 }
 
-impl<P: Perform> Default for Parser<P> {
+impl Default for Parser {
     fn default() -> Self {
         Self {
             state: Default::default(),
@@ -89,25 +89,27 @@ impl<P: Perform> Default for Parser<P> {
             ignoring: Default::default(),
             partial_utf8: Default::default(),
             partial_utf8_len: Default::default(),
-            next_step: Self::advance_ground,
+            next_step: Default::default(),
         }
     }
 }
 
-impl<P: Perform> Parser<P> {
-    #[inline]
-    fn advance_change_state(parser: &mut Self, performer: &mut P, bytes: &[u8]) -> usize {
-        parser.change_state(performer, bytes[0]);
-        1
-    }
+#[derive(Default)]
+enum AdvanceStep {
+    #[default]
+    Ground,
+    PartialUtf8,
+    ChangeState,
+}
 
+impl Parser {
     #[inline]
     pub fn new() -> Self {
         Default::default()
     }
 
     #[inline]
-    pub fn advance(&mut self, performer: &mut P, bytes: &[u8]) {
+    pub fn advance<P: Perform>(&mut self, performer: &mut P, bytes: &[u8]) {
         let mut i = 0;
 
         // Handle partial codepoints from previous calls to `advance`.
@@ -116,7 +118,16 @@ impl<P: Perform> Parser<P> {
         // }
 
         while i != bytes.len() {
-            i += (self.next_step)(self, performer, &bytes[i..]);
+            match self.next_step {
+                AdvanceStep::Ground => i += self.advance_ground(performer, &bytes[i..]),
+                AdvanceStep::PartialUtf8 => i += self.advance_partial_utf8(performer, &bytes[i..]),
+                AdvanceStep::ChangeState => {
+                    self.change_state(performer, bytes[i]);
+                    i += 1
+                }
+            }
+
+            // i += (self.next_step)(self, performer, &bytes[i..]);
 
             // if self.state == State::Ground {
             //     i += self.advance_ground(performer, &bytes[i..])
@@ -134,7 +145,7 @@ impl<P: Perform> Parser<P> {
     /// the escape character (`\x1b`). This allows more efficient parsing by
     /// using SIMD search with [`memchr`].
     #[inline]
-    fn advance_ground(&mut self, performer: &mut P, bytes: &[u8]) -> usize {
+    fn advance_ground<P: Perform>(&mut self, performer: &mut P, bytes: &[u8]) -> usize {
         // Find the next escape character.
         let num_bytes = bytes.len();
         let plain_chars = memchr::memchr(0x1B, bytes).unwrap_or(num_bytes);
@@ -143,7 +154,7 @@ impl<P: Perform> Parser<P> {
         if plain_chars == 0 {
             // self.state = State::Escape;
             // self.reset_params();
-            self.next_step = Self::advance_change_state;
+            self.next_step = AdvanceStep::ChangeState;
             return 0;
         }
 
@@ -155,7 +166,7 @@ impl<P: Perform> Parser<P> {
                 if plain_chars < num_bytes {
                     // self.state = State::Escape;
                     // self.reset_params();
-                    self.next_step = Self::advance_change_state;
+                    self.next_step = AdvanceStep::ChangeState;
                     // plain_chars + 1
                     plain_chars
                 } else {
@@ -193,7 +204,7 @@ impl<P: Perform> Parser<P> {
                             performer.print(char::REPLACEMENT_CHARACTER);
                             // self.state = State::Escape;
                             // self.reset_params();
-                            self.next_step = Self::advance_change_state;
+                            self.next_step = AdvanceStep::ChangeState;
                             // plain_chars + 1
                             plain_chars
                         } else {
@@ -203,7 +214,7 @@ impl<P: Perform> Parser<P> {
                             self.partial_utf8[self.partial_utf8_len..partial_len]
                                 .copy_from_slice(&bytes[valid_bytes..valid_bytes + extra_bytes]);
                             self.partial_utf8_len = partial_len;
-                            self.next_step = Self::advance_partial_utf8;
+                            self.next_step = AdvanceStep::PartialUtf8;
                             num_bytes
                         }
                     }
@@ -214,7 +225,7 @@ impl<P: Perform> Parser<P> {
 
     /// Handle ground dispatch of print/execute for all characters in a string.
     #[inline]
-    fn ground_dispatch(performer: &mut P, text: &str) {
+    fn ground_dispatch<P: Perform>(performer: &mut P, text: &str) {
         for c in text.chars() {
             match c {
                 '\x00'..='\x1f' | '\u{80}'..='\u{9f}' => performer.execute(c as u8),
@@ -224,7 +235,7 @@ impl<P: Perform> Parser<P> {
     }
 
     #[inline]
-    fn change_state(&mut self, performer: &mut P, byte: u8) {
+    fn change_state<P: Perform>(&mut self, performer: &mut P, byte: u8) {
         let (state, action) = table::change_state(self.state, byte);
 
         if state == State::Anywhere {
@@ -241,17 +252,17 @@ impl<P: Perform> Parser<P> {
     }
 
     #[inline(always)]
-    fn execute_state_exit_action(&mut self, performer: &mut P, byte: u8) {
+    fn execute_state_exit_action(&mut self, performer: &mut impl Perform, byte: u8) {
         self.execute_action(performer, table::state_exit_action(self.state), byte);
     }
 
     #[inline(always)]
-    fn execute_state_entry_action(&mut self, performer: &mut P, byte: u8) {
+    fn execute_state_entry_action(&mut self, performer: &mut impl Perform, byte: u8) {
         self.execute_action(performer, table::state_entry_action(self.state), byte);
     }
 
     #[inline(always)]
-    fn execute_action(&mut self, performer: &mut P, action: Action, byte: u8) {
+    fn execute_action(&mut self, performer: &mut impl Perform, action: Action, byte: u8) {
         use Action::*;
 
         match action {
@@ -277,7 +288,7 @@ impl<P: Perform> Parser<P> {
 
     /// Advance the parser while processing a partial utf8 codepoint.
     #[inline]
-    fn advance_partial_utf8(&mut self, performer: &mut P, bytes: &[u8]) -> usize {
+    fn advance_partial_utf8(&mut self, performer: &mut impl Perform, bytes: &[u8]) -> usize {
         // Try to copy up to 3 more characters, to ensure the codepoint is complete.
         let old_bytes = self.partial_utf8_len;
         let to_copy = bytes.len().min(self.partial_utf8.len() - old_bytes);
@@ -294,7 +305,7 @@ impl<P: Perform> Parser<P> {
 
                 self.partial_utf8_len = 0;
 
-                self.next_step = Self::advance_ground;
+                self.next_step = AdvanceStep::Ground;
 
                 c.len_utf8() - old_bytes
             }
@@ -312,7 +323,7 @@ impl<P: Perform> Parser<P> {
                     performer.print(c);
 
                     self.partial_utf8_len = 0;
-                    self.next_step = Self::advance_ground;
+                    self.next_step = AdvanceStep::Ground;
                     return valid_bytes - old_bytes;
                 }
 
@@ -323,7 +334,7 @@ impl<P: Perform> Parser<P> {
                         performer.print(char::REPLACEMENT_CHARACTER);
 
                         self.partial_utf8_len = 0;
-                        self.next_step = Self::advance_ground;
+                        self.next_step = AdvanceStep::Ground;
                         invalid_len - old_bytes
                     }
                     // If the character still isn't complete, wait for more data.
@@ -361,41 +372,41 @@ impl<P: Perform> Parser<P> {
     }
 
     #[inline(always)]
-    fn action_nop(&mut self, _performer: &mut P, _byte: u8) {}
+    fn action_nop(&mut self, _performer: &mut impl Perform, _byte: u8) {}
 
     #[inline(always)]
-    fn action_osc_put_param(&mut self, _performer: &mut P, _byte: u8) {
+    fn action_osc_put_param(&mut self, _performer: &mut impl Perform, _byte: u8) {
         self.osc_put_param()
     }
 
     #[inline(always)]
-    fn action_print(&mut self, performer: &mut P, byte: u8) {
+    fn action_print(&mut self, performer: &mut impl Perform, byte: u8) {
         performer.print(byte as char)
     }
 
     #[inline(always)]
-    fn action_put(&mut self, performer: &mut P, byte: u8) {
+    fn action_put(&mut self, performer: &mut impl Perform, byte: u8) {
         performer.put(byte)
     }
 
     #[inline(always)]
-    fn action_execute(&mut self, performer: &mut P, byte: u8) {
+    fn action_execute(&mut self, performer: &mut impl Perform, byte: u8) {
         performer.execute(byte)
     }
 
     #[inline]
-    fn action_osc_start(&mut self, _performer: &mut P, _byte: u8) {
+    fn action_osc_start(&mut self, _performer: &mut impl Perform, _byte: u8) {
         self.osc_raw.clear();
         self.osc_num_params = 0;
     }
 
     #[inline(always)]
-    fn action_osc_put(&mut self, _performer: &mut P, byte: u8) {
+    fn action_osc_put(&mut self, _performer: &mut impl Perform, byte: u8) {
         self.osc_raw.push(byte);
     }
 
     #[inline]
-    fn action_osc_end(&mut self, performer: &mut P, byte: u8) {
+    fn action_osc_end(&mut self, performer: &mut impl Perform, byte: u8) {
         self.osc_put_param();
         Self::action_osc_dispatch(self, performer, byte);
         self.osc_raw.clear();
@@ -403,7 +414,7 @@ impl<P: Perform> Parser<P> {
     }
 
     #[inline]
-    fn action_osc_dispatch(&mut self, performer: &mut P, byte: u8) {
+    fn action_osc_dispatch(&mut self, performer: &mut impl Perform, byte: u8) {
         let mut slices: [MaybeUninit<&[u8]>; MAX_OSC_PARAMS] =
             unsafe { MaybeUninit::uninit().assume_init() };
 
@@ -420,7 +431,7 @@ impl<P: Perform> Parser<P> {
     }
 
     #[inline]
-    fn action_hook(&mut self, performer: &mut P, byte: u8) {
+    fn action_hook(&mut self, performer: &mut impl Perform, byte: u8) {
         if self.params.is_full() {
             self.ignoring = true;
         } else {
@@ -436,13 +447,13 @@ impl<P: Perform> Parser<P> {
     }
 
     #[inline(always)]
-    fn action_unhook(&mut self, performer: &mut P, _byte: u8) {
+    fn action_unhook(&mut self, performer: &mut impl Perform, _byte: u8) {
         performer.unhook()
     }
 
     /// Advance to the next parameter.
     #[inline]
-    fn action_param(&mut self, _performer: &mut P, _byte: u8) {
+    fn action_param(&mut self, _performer: &mut impl Perform, _byte: u8) {
         if self.params.is_full() {
             self.ignoring = true;
         } else {
@@ -453,7 +464,7 @@ impl<P: Perform> Parser<P> {
 
     /// Advance inside the parameter without terminating it.
     #[inline]
-    fn action_param_next(&mut self, _performer: &mut P, byte: u8) {
+    fn action_param_next(&mut self, _performer: &mut impl Perform, byte: u8) {
         if self.params.is_full() {
             self.ignoring = true;
         } else {
@@ -465,7 +476,7 @@ impl<P: Perform> Parser<P> {
 
     /// Advance to the next subparameter.
     #[inline]
-    fn action_subparam(&mut self, _performer: &mut P, _byte: u8) {
+    fn action_subparam(&mut self, _performer: &mut impl Perform, _byte: u8) {
         if self.params.is_full() {
             self.ignoring = true;
         } else {
@@ -475,7 +486,7 @@ impl<P: Perform> Parser<P> {
     }
 
     #[inline]
-    fn action_csi_dispatch(&mut self, performer: &mut P, byte: u8) {
+    fn action_csi_dispatch(&mut self, performer: &mut impl Perform, byte: u8) {
         if self.params.is_full() {
             self.ignoring = true;
         } else {
@@ -491,7 +502,7 @@ impl<P: Perform> Parser<P> {
     }
 
     #[inline]
-    fn action_collect(&mut self, _performer: &mut P, byte: u8) {
+    fn action_collect(&mut self, _performer: &mut impl Perform, byte: u8) {
         if self.intermediate_idx == MAX_INTERMEDIATES {
             self.ignoring = true;
         } else {
@@ -501,13 +512,13 @@ impl<P: Perform> Parser<P> {
     }
 
     #[inline(always)]
-    fn action_esc_dispatch(&mut self, performer: &mut P, byte: u8) {
+    fn action_esc_dispatch(&mut self, performer: &mut impl Perform, byte: u8) {
         performer.esc_dispatch(self.intermediates(), self.ignoring, byte);
-        self.next_step = Self::advance_ground;
+        self.next_step = AdvanceStep::Ground;
     }
 
     #[inline]
-    fn action_clear(&mut self, _performer: &mut P, _byte: u8) {
+    fn action_clear(&mut self, _performer: &mut impl Perform, _byte: u8) {
         self.param = 0;
         self.ignoring = false;
         self.intermediate_idx = 0;
