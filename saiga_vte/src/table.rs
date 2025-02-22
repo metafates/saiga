@@ -112,7 +112,7 @@ pub enum Action {
 
     Subparam,
 
-    NextParam,
+    ParamNext,
 
     /// The current code should be mapped to a glyph according to the
     /// character set mappings and shift states in effect, and that glyph should be displayed.
@@ -202,7 +202,17 @@ const fn change_state_raw(state: State, byte: u8) -> Option<(State, Action)> {
         },
 
         Ground => None,
+        // Ground => match byte {
+        //     0x00..=0x17 | 0x19 | 0x1C..=0x1F => Some((Anywhere, Execute)),
+        //     0x20..=0x7F => Some((Anywhere, Print)),
+        //
+        //     _ => None,
+        // },
 
+        // Ground => match byte {
+        //     144 | 152 | 155..=159 => Some((Anywhere, Execute)),
+        //     _ => Some((Anywhere, Print)),
+        // }, // handled by parser itself
         Escape => match byte {
             0x00..=0x17 | 0x19 | 0x1C..=0x1F => Some((Anywhere, Execute)),
             0x20..=0x2F => Some((EscapeIntermediate, Collect)),
@@ -232,7 +242,7 @@ const fn change_state_raw(state: State, byte: u8) -> Option<(State, Action)> {
 
             // 0x3A ':' (colon) should result CsiIgnore state according to the parser
             // specification. However, this parser implements subparameters separated by colon
-            0x30..=0x39 => Some((CsiParam, NextParam)),
+            0x30..=0x39 => Some((CsiParam, ParamNext)),
             0x3A => Some((CsiParam, Subparam)),
             0x3B => Some((CsiParam, Param)),
 
@@ -246,7 +256,7 @@ const fn change_state_raw(state: State, byte: u8) -> Option<(State, Action)> {
 
             // 0x3A ':' (colon) should result CsiIgnore state according to the parser
             // specification. However, our parser implements subparameters separated by colon
-            0x30..=0x39 => Some((Anywhere, NextParam)),
+            0x30..=0x39 => Some((Anywhere, ParamNext)),
             0x3A => Some((Anywhere, Subparam)),
             0x3B => Some((Anywhere, Param)),
 
@@ -275,22 +285,22 @@ const fn change_state_raw(state: State, byte: u8) -> Option<(State, Action)> {
 
         DcsEntry => match byte {
             0x20..=0x2F => Some((DcsIntermediate, Collect)),
-            0x30..=0x39 => Some((DcsParam, NextParam)),
+            0x30..=0x39 => Some((DcsParam, ParamNext)),
             0x3A => Some((DcsParam, Subparam)),
             0x3B => Some((DcsParam, Param)),
             0x3C..=0x3F => Some((DcsParam, Collect)),
-            0x40..=0x7E => Some((DcsPassthrough, Hook)),
+            0x40..=0x7E => Some((DcsPassthrough, Ignore)),
 
             _ => None,
         },
 
         DcsParam => match byte {
             0x20..=0x2F => Some((DcsIntermediate, Collect)),
-            0x30..=0x39 => Some((Anywhere, NextParam)),
+            0x30..=0x39 => Some((Anywhere, ParamNext)),
             0x3A => Some((Anywhere, Subparam)),
             0x3B => Some((Anywhere, Param)),
             0x3C..=0x3F => Some((DcsIgnore, Ignore)),
-            0x40..=0x7E => Some((DcsPassthrough, Hook)),
+            0x40..=0x7E => Some((DcsPassthrough, Ignore)),
 
             _ => None,
         },
@@ -298,7 +308,7 @@ const fn change_state_raw(state: State, byte: u8) -> Option<(State, Action)> {
         DcsIntermediate => match byte {
             0x20..=0x2F => Some((Anywhere, Collect)),
             0x30..=0x3F => Some((DcsIgnore, Ignore)),
-            0x40..=0x7E => Some((DcsPassthrough, Hook)),
+            0x40..=0x7E => Some((DcsPassthrough, Ignore)),
 
             _ => None,
         },

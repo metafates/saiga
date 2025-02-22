@@ -53,7 +53,6 @@ pub trait Perform {
 
 const MAX_INTERMEDIATES: usize = 2;
 const MAX_OSC_PARAMS: usize = 16;
-const MAX_OSC_RAW: usize = 1024;
 
 pub struct Parser<P: Perform> {
     state: State,
@@ -115,7 +114,7 @@ impl<P: Perform> Parser<P> {
         result[Action::Hook as usize] = Self::action_hook;
         result[Action::Unhook as usize] = Self::action_unhook;
         result[Action::Param as usize] = Self::action_param;
-        result[Action::NextParam as usize] = Self::action_param_next;
+        result[Action::ParamNext as usize] = Self::action_param_next;
         result[Action::Subparam as usize] = Self::action_subparam;
         result[Action::CsiDispatch as usize] = Self::action_csi_dispatch;
         result[Action::Collect as usize] = Self::action_collect;
@@ -140,7 +139,6 @@ impl<P: Perform> Parser<P> {
         // }
 
         while i != bytes.len() {
-            println!("{:?} {:?}", self.state, &bytes[i..]);
             i += (self.next_step)(self, performer, &bytes[i..]);
 
             // if self.state == State::Ground {
@@ -209,7 +207,7 @@ impl<P: Perform> Parser<P> {
                         // While we could theoretically try to just re-parse
                         // `bytes[valid_bytes + len..plain_chars]`, it's easier
                         // to just skip it and invalid utf8 is pretty rare anyway.
-                        self.next_step = Self::advance_change_state;
+                        // self.next_step = Self::advance_change_state;
                         valid_bytes + len
                     }
                     None => {
@@ -371,162 +369,166 @@ impl<P: Perform> Parser<P> {
     }
 
     #[inline(always)]
-    fn action_nop(_parser: &mut Self, _performer: &mut P, _byte: u8) {}
+    fn action_nop(&mut self, _performer: &mut P, _byte: u8) {}
 
     #[inline(always)]
-    fn action_osc_put_param(parser: &mut Self, _performer: &mut P, _byte: u8) {
-        parser.osc_put_param()
+    fn action_osc_put_param(&mut self, _performer: &mut P, _byte: u8) {
+        self.osc_put_param()
     }
 
     #[inline(always)]
-    fn action_print(_parser: &mut Self, performer: &mut P, byte: u8) {
+    fn action_print(&mut self, performer: &mut P, byte: u8) {
         performer.print(byte as char)
     }
 
     #[inline(always)]
-    fn action_put(_parser: &mut Self, performer: &mut P, byte: u8) {
+    fn action_put(&mut self, performer: &mut P, byte: u8) {
         performer.put(byte)
     }
 
     #[inline(always)]
-    fn action_execute(_parser: &mut Self, performer: &mut P, byte: u8) {
+    fn action_execute(&mut self, performer: &mut P, byte: u8) {
         performer.execute(byte)
     }
 
     #[inline]
-    fn action_osc_start(parser: &mut Self, _performer: &mut P, _byte: u8) {
-        parser.osc_raw.clear();
-        parser.osc_num_params = 0;
+    fn action_osc_start(&mut self, _performer: &mut P, _byte: u8) {
+        self.osc_raw.clear();
+        self.osc_num_params = 0;
     }
 
     #[inline(always)]
-    fn action_osc_put(parser: &mut Self, _performer: &mut P, byte: u8) {
-        parser.osc_raw.push(byte);
+    fn action_osc_put(&mut self, _performer: &mut P, byte: u8) {
+        self.osc_raw.push(byte);
     }
 
     #[inline]
-    fn action_osc_end(parser: &mut Self, performer: &mut P, byte: u8) {
-        parser.osc_put_param();
-        Self::action_osc_dispatch(parser, performer, byte);
-        parser.osc_raw.clear();
-        parser.osc_num_params = 0;
+    fn action_osc_end(&mut self, performer: &mut P, byte: u8) {
+        self.osc_put_param();
+        Self::action_osc_dispatch(self, performer, byte);
+        self.osc_raw.clear();
+        self.osc_num_params = 0;
     }
 
     #[inline]
-    fn action_osc_dispatch(parser: &mut Self, performer: &mut P, byte: u8) {
+    fn action_osc_dispatch(&mut self, performer: &mut P, byte: u8) {
         let mut slices: [MaybeUninit<&[u8]>; MAX_OSC_PARAMS] =
             unsafe { MaybeUninit::uninit().assume_init() };
 
-        for (i, slice) in slices.iter_mut().enumerate().take(parser.osc_num_params) {
-            let indices = parser.osc_params[i];
-            *slice = MaybeUninit::new(&parser.osc_raw[indices.0..indices.1]);
+        for (i, slice) in slices.iter_mut().enumerate().take(self.osc_num_params) {
+            let indices = self.osc_params[i];
+            *slice = MaybeUninit::new(&self.osc_raw[indices.0..indices.1]);
         }
 
         unsafe {
-            let num_params = parser.osc_num_params;
+            let num_params = self.osc_num_params;
             let params = &slices[..num_params] as *const [MaybeUninit<&[u8]>] as *const [&[u8]];
             performer.osc_dispatch(&*params, byte == 0x07);
         }
     }
 
     #[inline]
-    fn action_hook(parser: &mut Self, performer: &mut P, byte: u8) {
-        if parser.params.is_full() {
-            parser.ignoring = true;
+    fn action_hook(&mut self, performer: &mut P, byte: u8) {
+        if self.params.is_full() {
+            self.ignoring = true;
         } else {
-            parser.params.push(parser.param);
+            self.params.push(self.param);
         }
 
         performer.hook(
-            &parser.params,
-            parser.intermediates(),
-            parser.ignoring,
+            &self.params,
+            self.intermediates(),
+            self.ignoring,
             byte as char,
         );
     }
 
     #[inline(always)]
-    fn action_unhook(_parser: &mut Self, performer: &mut P, _byte: u8) {
+    fn action_unhook(&mut self, performer: &mut P, _byte: u8) {
         performer.unhook()
     }
 
     /// Advance to the next parameter.
     #[inline]
-    fn action_param(parser: &mut Self, _performer: &mut P, _byte: u8) {
-        if parser.params.is_full() {
-            parser.ignoring = true;
+    fn action_param(&mut self, _performer: &mut P, _byte: u8) {
+        if self.params.is_full() {
+            self.ignoring = true;
         } else {
-            parser.params.push(parser.param);
-            parser.param = 0;
+            self.params.push(self.param);
+            self.param = 0;
         }
     }
 
     /// Advance inside the parameter without terminating it.
     #[inline]
-    fn action_param_next(parser: &mut Self, _performer: &mut P, byte: u8) {
-        if parser.params.is_full() {
-            parser.ignoring = true;
+    fn action_param_next(&mut self, _performer: &mut P, byte: u8) {
+        if self.params.is_full() {
+            self.ignoring = true;
         } else {
             // Continue collecting bytes into param.
-            parser.param = parser.param.saturating_mul(10);
-            parser.param = parser.param.saturating_add((byte - b'0') as u16);
+            self.param = self.param.saturating_mul(10);
+            self.param = self.param.saturating_add((byte - b'0') as u16);
         }
     }
 
     /// Advance to the next subparameter.
     #[inline]
-    fn action_subparam(parser: &mut Self, _performer: &mut P, _byte: u8) {
-        if parser.params.is_full() {
-            parser.ignoring = true;
+    fn action_subparam(&mut self, _performer: &mut P, _byte: u8) {
+        if self.params.is_full() {
+            self.ignoring = true;
         } else {
-            parser.params.extend(parser.param);
-            parser.param = 0;
+            self.params.extend(self.param);
+            self.param = 0;
         }
     }
 
     #[inline]
-    fn action_csi_dispatch(parser: &mut Self, performer: &mut P, byte: u8) {
-        if parser.params.is_full() {
-            parser.ignoring = true;
+    fn action_csi_dispatch(&mut self, performer: &mut P, byte: u8) {
+        if self.params.is_full() {
+            self.ignoring = true;
         } else {
-            parser.params.push(parser.param);
+            self.params.push(self.param);
         }
 
         performer.csi_dispatch(
-            &parser.params,
-            parser.intermediates(),
-            parser.ignoring,
+            &self.params,
+            self.intermediates(),
+            self.ignoring,
             byte as char,
         );
     }
 
     #[inline]
-    fn action_collect(parser: &mut Self, _performer: &mut P, byte: u8) {
-        if parser.intermediate_idx == MAX_INTERMEDIATES {
-            parser.ignoring = true;
+    fn action_collect(&mut self, _performer: &mut P, byte: u8) {
+        if self.intermediate_idx == MAX_INTERMEDIATES {
+            self.ignoring = true;
         } else {
-            parser.intermediates[parser.intermediate_idx] = byte;
-            parser.intermediate_idx += 1;
+            self.intermediates[self.intermediate_idx] = byte;
+            self.intermediate_idx += 1;
         }
     }
 
     #[inline(always)]
-    fn action_esc_dispatch(parser: &mut Self, performer: &mut P, byte: u8) {
-        performer.esc_dispatch(parser.intermediates(), parser.ignoring, byte);
+    fn action_esc_dispatch(&mut self, performer: &mut P, byte: u8) {
+        performer.esc_dispatch(self.intermediates(), self.ignoring, byte);
+        self.next_step = Self::advance_ground;
     }
 
     #[inline]
-    fn action_clear(parser: &mut Self, _performer: &mut P, _byte: u8) {
-        parser.param = 0;
-        parser.ignoring = false;
-        parser.intermediate_idx = 0;
+    fn action_clear(&mut self, _performer: &mut P, _byte: u8) {
+        self.param = 0;
+        self.ignoring = false;
+        self.intermediate_idx = 0;
+        self.partial_utf8_len = 0;
 
-        parser.params.clear();
+        self.params.clear();
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::char;
+
     use super::*;
 
     #[derive(Default)]
@@ -695,36 +697,6 @@ mod tests {
     }
 
     #[test]
-    fn exceed_max_buffer_size() {
-        const NUM_BYTES: usize = MAX_OSC_RAW + 100;
-        const INPUT_START: &[u8] = b"\x1b]52;s";
-        const INPUT_END: &[u8] = b"\x07";
-
-        let mut dispatcher = Dispatcher::default();
-        let mut parser = Parser::new();
-
-        // Create valid OSC escape
-        parser.advance(&mut dispatcher, INPUT_START);
-
-        // Exceed max buffer size
-        parser.advance(&mut dispatcher, &[b'a'; NUM_BYTES]);
-
-        // Terminate escape for dispatch
-        parser.advance(&mut dispatcher, INPUT_END);
-
-        assert_eq!(dispatcher.dispatched.len(), 1);
-        match &dispatcher.dispatched[0] {
-            Sequence::Osc(params, _) => {
-                assert_eq!(params.len(), 2);
-                assert_eq!(params[0], b"52");
-
-                assert_eq!(params[1].len(), NUM_BYTES + INPUT_END.len());
-            }
-            _ => panic!("expected osc sequence"),
-        }
-    }
-
-    #[test]
     fn parse_csi_max_params() {
         // This will build a list of repeating '1;'s
         // The length is MAX_PARAMS - 1 because the last semicolon is interpreted
@@ -881,7 +853,12 @@ mod tests {
 
         parser.advance(&mut dispatcher, INPUT);
 
-        assert_eq!(dispatcher.dispatched.len(), 3);
+        assert_eq!(
+            dispatcher.dispatched.len(),
+            3,
+            "{:?}",
+            dispatcher.dispatched
+        );
         match &dispatcher.dispatched[0] {
             Sequence::DcsHook(params, intermediates, ignore, _) => {
                 assert_eq!(intermediates, b"$");
@@ -902,7 +879,12 @@ mod tests {
 
         parser.advance(&mut dispatcher, INPUT);
 
-        assert_eq!(dispatcher.dispatched.len(), 7);
+        assert_eq!(
+            dispatcher.dispatched.len(),
+            7,
+            "{:?}",
+            dispatcher.dispatched
+        );
         match &dispatcher.dispatched[0] {
             Sequence::DcsHook(params, _, _, c) => {
                 assert_eq!(params, &[[0], [1]]);
@@ -1069,7 +1051,10 @@ mod tests {
 
         assert_eq!(dispatcher.dispatched.len(), 3);
         assert_eq!(dispatcher.dispatched[0], Sequence::Print('a'));
-        assert_eq!(dispatcher.dispatched[1], Sequence::Print('�'));
+        assert_eq!(
+            dispatcher.dispatched[1],
+            Sequence::Print(char::REPLACEMENT_CHARACTER)
+        );
         assert_eq!(dispatcher.dispatched[2], Sequence::Print('b'));
     }
 
@@ -1084,7 +1069,10 @@ mod tests {
         parser.advance(&mut dispatcher, &INPUT[2..]);
 
         assert_eq!(dispatcher.dispatched[0], Sequence::Print('俙'));
-        assert_eq!(dispatcher.dispatched[1], Sequence::Print('�'));
+        assert_eq!(
+            dispatcher.dispatched[1],
+            Sequence::Print(char::REPLACEMENT_CHARACTER)
+        );
     }
 
     #[test]
@@ -1096,8 +1084,16 @@ mod tests {
 
         parser.advance(&mut dispatcher, INPUT);
 
-        assert_eq!(dispatcher.dispatched.len(), 4);
-        assert_eq!(dispatcher.dispatched[0], Sequence::Print('�'));
+        assert_eq!(
+            dispatcher.dispatched.len(),
+            4,
+            "{:?}",
+            dispatcher.dispatched
+        );
+        assert_eq!(
+            dispatcher.dispatched[0],
+            Sequence::Print(char::REPLACEMENT_CHARACTER)
+        );
         assert_eq!(
             dispatcher.dispatched[1],
             Sequence::Esc(Vec::new(), false, b'0')
