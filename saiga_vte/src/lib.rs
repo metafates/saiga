@@ -226,10 +226,20 @@ impl Parser {
     /// Handle ground dispatch of print/execute for all characters in a string.
     #[inline]
     fn ground_dispatch<P: Perform>(performer: &mut P, text: &str) {
+        // for c in text.chars() {
+        //     match c {
+        //         '\x00'..='\x1f' | '\u{80}'..='\u{9f}' => performer.execute(c as u8),
+        //         _ => performer.print(c),
+        //     }
+        // }
+
         for c in text.chars() {
-            match c {
-                '\x00'..='\x1f' | '\u{80}'..='\u{9f}' => performer.execute(c as u8),
-                _ => performer.print(c),
+            let code = c as u32;
+            // Check if code is in 0x00-0x1F or 0x80-0x9F using bitwise optimization
+            if code <= 0x1F || (code ^ 0x80) <= 0x1F {
+                performer.execute(code as u8);
+            } else {
+                performer.print(c);
             }
         }
     }
@@ -288,6 +298,7 @@ impl Parser {
 
     /// Advance the parser while processing a partial utf8 codepoint.
     #[inline]
+    #[cold]
     fn advance_partial_utf8(&mut self, performer: &mut impl Perform, bytes: &[u8]) -> usize {
         // Try to copy up to 3 more characters, to ensure the codepoint is complete.
         let old_bytes = self.partial_utf8_len;
@@ -372,9 +383,6 @@ impl Parser {
     }
 
     #[inline(always)]
-    fn action_nop(&mut self, _performer: &mut impl Perform, _byte: u8) {}
-
-    #[inline(always)]
     fn action_osc_put_param(&mut self, _performer: &mut impl Perform, _byte: u8) {
         self.osc_put_param()
     }
@@ -418,9 +426,15 @@ impl Parser {
         let mut slices: [MaybeUninit<&[u8]>; MAX_OSC_PARAMS] =
             unsafe { MaybeUninit::uninit().assume_init() };
 
-        for (i, slice) in slices.iter_mut().enumerate().take(self.osc_num_params) {
-            let indices = self.osc_params[i];
-            *slice = MaybeUninit::new(&self.osc_raw[indices.0..indices.1]);
+        // for (i, slice) in slices.iter_mut().enumerate().take(self.osc_num_params) {
+        //     let indices = self.osc_params[i];
+        //     *slice = MaybeUninit::new(&self.osc_raw[indices.0..indices.1]);
+        // }
+
+        let params = &self.osc_params[..self.osc_num_params];
+        for (slice, indices) in slices.iter_mut().zip(params) {
+            let raw_slice = unsafe { self.osc_raw.get_unchecked(indices.0..indices.1) };
+            *slice = MaybeUninit::new(raw_slice);
         }
 
         unsafe {
