@@ -78,11 +78,11 @@ fn alacritty_vte(c: &mut Criterion) {
             parser.advance(&mut performer, black_box(BAT_OUTPUT));
         });
     });
-    // group.bench_function("batch utf8", |b| {
-    //     b.iter(|| {
-    //         parser.advance(&mut performer, black_box(BIG_UTF8));
-    //     });
-    // });
+    group.bench_function("batch utf8", |b| {
+        b.iter(|| {
+            parser.advance(&mut performer, black_box(BIG_UTF8));
+        });
+    });
     //
     // group.bench_function("chunks", |b| {
     //     b.iter(|| {
@@ -129,11 +129,11 @@ fn parser_advance(c: &mut Criterion) {
         });
     });
 
-    // group.bench_function("batch utf8", |b| {
-    //     b.iter(|| {
-    //         parser.advance(&mut performer, black_box(BIG_UTF8));
-    //     });
-    // });
+    group.bench_function("batch utf8", |b| {
+        b.iter(|| {
+            parser.advance(&mut performer, black_box(BIG_UTF8));
+        });
+    });
     //
     // group.bench_function("chunks", |b| {
     //     b.iter(|| {
