@@ -226,17 +226,30 @@ impl Parser {
     /// Handle ground dispatch of print/execute for all characters in a string.
     #[inline]
     fn ground_dispatch<P: Perform>(performer: &mut P, text: &str) {
-        // for c in text.chars() {
-        //     match c {
-        //         '\x00'..='\x1f' | '\u{80}'..='\u{9f}' => performer.execute(c as u8),
-        //         _ => performer.print(c),
-        //     }
-        // }
+        let bytes = text.as_bytes();
+        let mut i = 0;
 
-        for c in text.chars() {
+        while i < bytes.len() {
+            let byte = bytes[i];
+            // Fast path: ASCII characters
+            if byte <= 0x7F {
+                i += 1;
+
+                if byte <= 0x1F {
+                    performer.execute(byte);
+                } else {
+                    performer.print(byte as char);
+                }
+                continue;
+            }
+
+            // Slow path: Multi-byte UTF-8
+            let (c, len) = decode_multibyte_utf8(&bytes[i..]);
+            i += len;
+
+            // For non-ASCII, check only 0x80..=0x9F (already ≥0x80)
             let code = c as u32;
-            // Check if code is in 0x00-0x1F or 0x80-0x9F using bitwise optimization
-            if code <= 0x1F || (code ^ 0x80) <= 0x1F {
+            if code <= 0x9F {
                 performer.execute(code as u8);
             } else {
                 performer.print(c);
@@ -540,6 +553,29 @@ impl Parser {
 
         self.params.clear();
     }
+}
+
+#[inline(always)]
+fn decode_multibyte_utf8(src: &[u8]) -> (char, usize) {
+    let first = src[0];
+    let (code, len) = match first {
+        0b110_00000..=0b110_11111 => (((first as u32 & 0x1F) << 6) | (src[1] as u32 & 0x3F), 2),
+        0b1110_0000..=0b1110_1111 => (
+            ((first as u32 & 0x0F) << 12) | ((src[1] as u32 & 0x3F) << 6) | (src[2] as u32 & 0x3F),
+            3,
+        ),
+        0b1111_0000..=0b1111_0111 => (
+            ((first as u32 & 0x07) << 18)
+                | ((src[1] as u32 & 0x3F) << 12)
+                | ((src[2] as u32 & 0x3F) << 6)
+                | (src[3] as u32 & 0x3F),
+            4,
+        ),
+        _ => return (char::REPLACEMENT_CHARACTER, 1), // invalid utf8
+    };
+
+    // SAFETY: `code` is derived from valid UTF-8 bytes
+    (unsafe { char::from_u32_unchecked(code) }, len)
 }
 
 #[cfg(test)]
