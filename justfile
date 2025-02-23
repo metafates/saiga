@@ -10,8 +10,6 @@ build:
 generate-pgo:
     rm -rf {{ pgo_data_dir }}
     RUSTFLAGS="-Cprofile-generate={{ pgo_data_dir }}" cargo run --release 
-
-merge-pgo:
     llvm-profdata merge -o {{ pgo_merged }} {{ pgo_data_dir }}
 
 build-pgo:
@@ -19,14 +17,6 @@ build-pgo:
 
 bench:
     cargo bench
-
-[macos]
-bench-results:
-    open ./target/criterion/report/index.html
-
-[linux]
-bench-results:
-    xdg-open ./target/criterion/report/index.html
 
 test:
     cargo test

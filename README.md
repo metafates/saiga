@@ -16,7 +16,7 @@ optimizations for processing UTF-8 in parallel.
 Saiga aims to be fast.
 
 Right now it lacks many useful (and not so) features and optimizations.
-However, it can already outperform Alacritty terminal on [alacritty/vtebench](https://github.com/alacritty/vtebench)
+However, it can already outperform Alacritty terminal on [alacritty/vtebench](https://github.com/alacritty/vtebench) under certain circumstances.
 
 <img width="700" alt="vtebench results" src="https://github.com/user-attachments/assets/a8760b7b-ffcf-4b11-acce-cc9e8fbe0394">
 
@@ -54,9 +54,7 @@ just generate-pgo
 # It will compile and run saiga in special mode for generating PGO data.
 # Do something with it you would normally do with terminal, like using vim.
 # You can also run vtebench with it.
-
-# After you're done recording your profile close the terminal and merge generated profile data
-just merge-pgo
+# After you're done recording your profile close the terminal.
 
 # And compile with it
 just build-pgo
@@ -70,3 +68,4 @@ just build-pgo
 - Proper input handling. Right now it's very basic and does not handle some key sequences. Mouse support is planned too (including text selection).
 - Basic configuration
 - Fix renderer issues, like rects overflowing each other
+- Apply more optimizations
