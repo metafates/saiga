@@ -5,7 +5,7 @@ use std::ops::{Bound, Deref, Index, IndexMut, Range, RangeBounds};
 
 use crate::index::{Column, Line, Point};
 use crate::term::cell::{Flags, ResetDiscriminant};
-use saiga_vte::ansi::handler::{Charset, CharsetIndex};
+use saiga_vte::ansi::{Charset, CharsetIndex};
 
 pub mod resize;
 mod row;

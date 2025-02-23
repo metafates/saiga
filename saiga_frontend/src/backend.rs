@@ -3,13 +3,13 @@ use std::{borrow::Cow, collections::HashMap, io, sync::Arc};
 use saiga_backend::{
     event::{Event, EventListener, Notify as _, OnResize as _, WindowSize},
     event_loop::{EventLoop, Notifier},
-    grid::{Cursor, Dimensions, Grid},
-    index::{Column, Line, Point},
+    grid::Dimensions,
+    index::{Column, Line},
     sync::FairMutex,
-    term::{self, cell::Cell, color::Colors, Term, TermDamage, TermMode},
+    term::{self, Term, TermDamage},
     tty,
 };
-use saiga_vte::ansi::handler::{CursorStyle, Rgb};
+use saiga_vte::ansi::Rgb;
 use tokio::sync::mpsc;
 
 use crate::{settings::BackendSettings, size::Size};

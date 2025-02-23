@@ -6,6 +6,7 @@ use wgpu::MultisampleState;
 
 use crate::{color::Color, display::context, size::Size, term_font::TermFont};
 
+#[derive(Debug)]
 pub struct Glyph {
     pub value: String,
     pub color: Color,

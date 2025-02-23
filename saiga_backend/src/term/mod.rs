@@ -16,8 +16,8 @@ use crate::index::{self, Boundary, Column, Direction, Line, Point};
 use crate::selection::{Selection, SelectionRange, SelectionType};
 use crate::term::cell::{Cell, Flags, LineLength};
 use crate::term::color::Colors;
-use saiga_vte::ansi::handler::{
-    self, Attribute, Charset, CharsetIndex, Color, CursorShape, CursorStyle, Handler, Hyperlink,
+use saiga_vte::ansi::{
+    self, Attr, Charset, CharsetIndex, Color, CursorShape, CursorStyle, Handler, Hyperlink,
     KeyboardModes, KeyboardModesApplyBehavior, NamedColor, NamedMode, NamedPrivateMode,
     PrivateMode, Rgb,
 };
@@ -1595,7 +1595,7 @@ impl<T: EventListener> Handler for Term<T> {
     }
 
     #[inline]
-    fn clear_line(&mut self, mode: handler::LineClearMode) {
+    fn clear_line(&mut self, mode: ansi::LineClearMode) {
         trace!("Clearing line: {:?}", mode);
 
         let cursor = &self.grid.cursor;
@@ -1603,10 +1603,10 @@ impl<T: EventListener> Handler for Term<T> {
         let point = cursor.point;
 
         let (left, right) = match mode {
-            handler::LineClearMode::Right if cursor.input_needs_wrap => return,
-            handler::LineClearMode::Right => (point.column, Column(self.columns())),
-            handler::LineClearMode::Left => (Column(0), point.column + 1),
-            handler::LineClearMode::All => (Column(0), Column(self.columns())),
+            ansi::LineClearMode::Right if cursor.input_needs_wrap => return,
+            ansi::LineClearMode::Right => (point.column, Column(self.columns())),
+            ansi::LineClearMode::Left => (Column(0), point.column + 1),
+            ansi::LineClearMode::All => (Column(0), Column(self.columns())),
         };
 
         self.damage
@@ -1716,14 +1716,14 @@ impl<T: EventListener> Handler for Term<T> {
     }
 
     #[inline]
-    fn clear_screen(&mut self, mode: handler::ScreenClearMode) {
+    fn clear_screen(&mut self, mode: ansi::ScreenClearMode) {
         trace!("Clearing screen: {:?}", mode);
         let bg = self.grid.cursor.template.bg;
 
         let screen_lines = self.screen_lines();
 
         match mode {
-            handler::ScreenClearMode::Above => {
+            ansi::ScreenClearMode::Above => {
                 let cursor = self.grid.cursor.point;
 
                 // If clearing more than one line.
@@ -1741,7 +1741,7 @@ impl<T: EventListener> Handler for Term<T> {
                 let range = Line(0)..=cursor.line;
                 self.selection = self.selection.take().filter(|s| !s.intersects_range(range));
             }
-            handler::ScreenClearMode::Below => {
+            ansi::ScreenClearMode::Below => {
                 let cursor = self.grid.cursor.point;
                 for cell in &mut self.grid[cursor.line][cursor.column..] {
                     *cell = bg.into();
@@ -1754,7 +1754,7 @@ impl<T: EventListener> Handler for Term<T> {
                 let range = cursor.line..Line(screen_lines as i32);
                 self.selection = self.selection.take().filter(|s| !s.intersects_range(range));
             }
-            handler::ScreenClearMode::All => {
+            ansi::ScreenClearMode::All => {
                 if self.mode.contains(TermMode::ALT_SCREEN) {
                     self.grid.reset_region(..);
                 } else {
@@ -1763,7 +1763,7 @@ impl<T: EventListener> Handler for Term<T> {
 
                 self.selection = None;
             }
-            handler::ScreenClearMode::Saved if self.history_size() > 0 => {
+            ansi::ScreenClearMode::Saved if self.history_size() > 0 => {
                 self.grid.clear_history();
 
                 self.selection = self
@@ -1772,20 +1772,20 @@ impl<T: EventListener> Handler for Term<T> {
                     .filter(|s| !s.intersects_range(..Line(0)));
             }
             // We have no history to clear.
-            handler::ScreenClearMode::Saved => (),
+            ansi::ScreenClearMode::Saved => (),
         }
 
         self.mark_fully_damaged();
     }
 
     #[inline]
-    fn clear_tabs(&mut self, mode: handler::TabulationClearMode) {
+    fn clear_tabs(&mut self, mode: ansi::TabulationClearMode) {
         trace!("Clearing tabs: {:?}", mode);
         match mode {
-            handler::TabulationClearMode::Current => {
+            ansi::TabulationClearMode::Current => {
                 self.tabs[self.grid.cursor.point.column] = false;
             }
-            handler::TabulationClearMode::All => {
+            ansi::TabulationClearMode::All => {
                 self.tabs.clear_all();
             }
         }
@@ -1839,52 +1839,52 @@ impl<T: EventListener> Handler for Term<T> {
 
     /// Set a terminal attribute.
     #[inline]
-    fn terminal_attribute(&mut self, attr: Attribute) {
+    fn terminal_attribute(&mut self, attr: Attr) {
         trace!("Setting attribute: {:?}", attr);
         let cursor = &mut self.grid.cursor;
         match attr {
-            Attribute::Foreground(color) => cursor.template.fg = color,
-            Attribute::Background(color) => cursor.template.bg = color,
-            Attribute::UnderlineColor(color) => cursor.template.set_underline_color(color),
-            Attribute::Reset => {
+            Attr::Foreground(color) => cursor.template.fg = color,
+            Attr::Background(color) => cursor.template.bg = color,
+            Attr::UnderlineColor(color) => cursor.template.set_underline_color(color),
+            Attr::Reset => {
                 cursor.template.fg = Color::Named(NamedColor::Foreground);
                 cursor.template.bg = Color::Named(NamedColor::Background);
                 cursor.template.flags = Flags::empty();
                 cursor.template.set_underline_color(None);
             }
-            Attribute::Reverse => cursor.template.flags.insert(Flags::INVERSE),
-            Attribute::CancelReverse => cursor.template.flags.remove(Flags::INVERSE),
-            Attribute::Bold => cursor.template.flags.insert(Flags::BOLD),
-            Attribute::CancelBold => cursor.template.flags.remove(Flags::BOLD),
-            Attribute::Dim => cursor.template.flags.insert(Flags::DIM),
-            Attribute::CancelBoldDim => cursor.template.flags.remove(Flags::BOLD | Flags::DIM),
-            Attribute::Italic => cursor.template.flags.insert(Flags::ITALIC),
-            Attribute::CancelItalic => cursor.template.flags.remove(Flags::ITALIC),
-            Attribute::Underline => {
+            Attr::Reverse => cursor.template.flags.insert(Flags::INVERSE),
+            Attr::CancelReverse => cursor.template.flags.remove(Flags::INVERSE),
+            Attr::Bold => cursor.template.flags.insert(Flags::BOLD),
+            Attr::CancelBold => cursor.template.flags.remove(Flags::BOLD),
+            Attr::Dim => cursor.template.flags.insert(Flags::DIM),
+            Attr::CancelBoldDim => cursor.template.flags.remove(Flags::BOLD | Flags::DIM),
+            Attr::Italic => cursor.template.flags.insert(Flags::ITALIC),
+            Attr::CancelItalic => cursor.template.flags.remove(Flags::ITALIC),
+            Attr::Underline => {
                 cursor.template.flags.remove(Flags::ALL_UNDERLINES);
                 cursor.template.flags.insert(Flags::UNDERLINE);
             }
-            Attribute::DoubleUnderline => {
+            Attr::DoubleUnderline => {
                 cursor.template.flags.remove(Flags::ALL_UNDERLINES);
                 cursor.template.flags.insert(Flags::DOUBLE_UNDERLINE);
             }
-            Attribute::Undercurl => {
+            Attr::Undercurl => {
                 cursor.template.flags.remove(Flags::ALL_UNDERLINES);
                 cursor.template.flags.insert(Flags::UNDERCURL);
             }
-            Attribute::DottedUnderline => {
+            Attr::DottedUnderline => {
                 cursor.template.flags.remove(Flags::ALL_UNDERLINES);
                 cursor.template.flags.insert(Flags::DOTTED_UNDERLINE);
             }
-            Attribute::DashedUnderline => {
+            Attr::DashedUnderline => {
                 cursor.template.flags.remove(Flags::ALL_UNDERLINES);
                 cursor.template.flags.insert(Flags::DASHED_UNDERLINE);
             }
-            Attribute::CancelUnderline => cursor.template.flags.remove(Flags::ALL_UNDERLINES),
-            Attribute::Hidden => cursor.template.flags.insert(Flags::HIDDEN),
-            Attribute::CancelHidden => cursor.template.flags.remove(Flags::HIDDEN),
-            Attribute::Strike => cursor.template.flags.insert(Flags::STRIKEOUT),
-            Attribute::CancelStrike => cursor.template.flags.remove(Flags::STRIKEOUT),
+            Attr::CancelUnderline => cursor.template.flags.remove(Flags::ALL_UNDERLINES),
+            Attr::Hidden => cursor.template.flags.insert(Flags::HIDDEN),
+            Attr::CancelHidden => cursor.template.flags.remove(Flags::HIDDEN),
+            Attr::Strike => cursor.template.flags.insert(Flags::STRIKEOUT),
+            Attr::CancelStrike => cursor.template.flags.remove(Flags::STRIKEOUT),
             _ => {
                 debug!("Term got unhandled attr: {:?}", attr);
             }
@@ -2059,10 +2059,10 @@ impl<T: EventListener> Handler for Term<T> {
     }
 
     #[inline]
-    fn set_mode(&mut self, mode: handler::Mode) {
+    fn set_mode(&mut self, mode: ansi::Mode) {
         let mode = match mode {
-            handler::Mode::Named(mode) => mode,
-            handler::Mode::Unknown(mode) => {
+            ansi::Mode::Named(mode) => mode,
+            ansi::Mode::Unknown(mode) => {
                 debug!("Ignoring unknown mode {} in set_mode", mode);
                 return;
             }
@@ -2076,10 +2076,10 @@ impl<T: EventListener> Handler for Term<T> {
     }
 
     #[inline]
-    fn unset_mode(&mut self, mode: handler::Mode) {
+    fn unset_mode(&mut self, mode: ansi::Mode) {
         let mode = match mode {
-            handler::Mode::Named(mode) => mode,
-            handler::Mode::Unknown(mode) => {
+            ansi::Mode::Named(mode) => mode,
+            ansi::Mode::Unknown(mode) => {
                 debug!("Ignoring unknown mode {} in unset_mode", mode);
                 return;
             }
@@ -2096,16 +2096,16 @@ impl<T: EventListener> Handler for Term<T> {
     }
 
     #[inline]
-    fn report_mode(&mut self, mode: handler::Mode) {
+    fn report_mode(&mut self, mode: ansi::Mode) {
         trace!("Reporting mode {mode:?}");
         let state = match mode {
-            handler::Mode::Named(mode) => match mode {
+            ansi::Mode::Named(mode) => match mode {
                 NamedMode::Insert => self.mode.contains(TermMode::INSERT).into(),
                 NamedMode::LineFeedNewLine => {
                     self.mode.contains(TermMode::LINE_FEED_NEW_LINE).into()
                 }
             },
-            handler::Mode::Unknown(_) => ModeState::NotSupported,
+            ansi::Mode::Unknown(_) => ModeState::NotSupported,
         };
 
         self.event_proxy.send_event(Event::PtyWrite(format!(
@@ -2497,7 +2497,7 @@ mod tests {
     use crate::selection::{Selection, SelectionType};
     use crate::term::cell::Flags;
     use crate::term::test::TermSize;
-    use saiga_vte::ansi::handler::{self as ansi, Charset, CharsetIndex, Handler};
+    use saiga_vte::ansi::{self, Charset, CharsetIndex, Handler};
 
     #[test]
     fn scroll_display_page_up() {
@@ -2750,7 +2750,7 @@ mod tests {
         term.grid.scroll_up(&(Line(0)..Line(1)), 1);
 
         // Clear the history.
-        term.clear_screen(handler::ScreenClearMode::Saved);
+        term.clear_screen(ansi::ScreenClearMode::Saved);
 
         // Make sure that scrolling does not change the grid.
         let mut scrolled_grid = term.grid.clone();
@@ -3228,7 +3228,7 @@ mod tests {
         }
         term.reset_damage();
 
-        term.clear_screen(handler::ScreenClearMode::Above);
+        term.clear_screen(ansi::ScreenClearMode::Above);
         assert!(term.damage.full);
         term.reset_damage();
 

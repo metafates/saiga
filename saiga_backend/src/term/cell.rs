@@ -5,7 +5,7 @@ use bitflags::bitflags;
 
 use crate::grid::{self, GridCell};
 use crate::index::Column;
-use saiga_vte::ansi::handler::{Color, Hyperlink as VteHyperlink, NamedColor};
+use saiga_vte::ansi::{Color, Hyperlink as VteHyperlink, NamedColor};
 
 bitflags! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

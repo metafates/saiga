@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use saiga_vte::ansi::{self, handler::NamedColor};
+use saiga_vte::ansi::{self, NamedColor};
 
 use crate::{color::Color, settings::ThemeSettings};
 
@@ -17,10 +17,10 @@ impl Theme {
         }
     }
 
-    pub fn get_color(&self, c: ansi::handler::Color) -> Color {
+    pub fn get_color(&self, c: ansi::Color) -> Color {
         match c {
-            ansi::handler::Color::Spec(rgb) => Color::from_rgb8(rgb.r, rgb.g, rgb.b),
-            ansi::handler::Color::Indexed(index) => {
+            ansi::Color::Spec(rgb) => Color::from_rgb8(rgb.r, rgb.g, rgb.b),
+            ansi::Color::Indexed(index) => {
                 if index <= 15 {
                     return match index {
                         // Normal terminal colors
@@ -52,7 +52,7 @@ impl Theme {
                     None => Color::from_rgb8(0, 0, 0),
                 }
             }
-            ansi::handler::Color::Named(c) => {
+            ansi::Color::Named(c) => {
                 match c {
                     NamedColor::Foreground => self.palette.foreground,
                     NamedColor::Background => self.palette.background,

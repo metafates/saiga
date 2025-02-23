@@ -254,35 +254,41 @@ impl Parser {
     /// Handle ground dispatch of print/execute for all characters in a string.
     #[inline]
     fn ground_dispatch(performer: &mut impl Perform, text: &str) {
-        let bytes = text.as_bytes();
-        let mut i = 0;
-
-        while i < bytes.len() {
-            let byte = bytes[i];
-            // Fast path: ASCII characters
-            if byte <= 0x7F {
-                i += 1;
-
-                if byte <= 0x1F {
-                    performer.execute(byte);
-                } else {
-                    performer.print(byte as char);
-                }
-                continue;
-            }
-
-            // Slow path: Multi-byte UTF-8
-            let (c, len) = decode_multibyte_utf8(&bytes[i..]);
-            i += len;
-
-            // For non-ASCII, check only 0x80..=0x9F (already ≥0x80)
-            let code = c as u32;
-            if code <= 0x9F {
-                performer.execute(code as u8);
-            } else {
-                performer.print(c);
+        for c in text.chars() {
+            match c {
+                '\x00'..='\x1f' | '\u{80}'..='\u{9f}' => performer.execute(c as u8),
+                _ => performer.print(c),
             }
         }
+        // let bytes = text.as_bytes();
+        // let mut i = 0;
+        //
+        // while i < bytes.len() {
+        //     let byte = bytes[i];
+        //     // Fast path: ASCII characters
+        //     if byte <= 0x7F {
+        //         i += 1;
+        //
+        //         if byte <= 0x1F {
+        //             performer.execute(byte);
+        //         } else {
+        //             performer.print(byte as char);
+        //         }
+        //         continue;
+        //     }
+        //
+        //     // Slow path: Multi-byte UTF-8
+        //     let (c, len) = decode_multibyte_utf8(&bytes[i..]);
+        //     i += len;
+        //
+        //     // For non-ASCII, check only 0x80..=0x9F (already ≥0x80)
+        //     let code = c as u32;
+        //     if code <= 0x9F {
+        //         performer.execute(code as u8);
+        //     } else {
+        //         performer.print(c);
+        //     }
+        // }
     }
 
     #[inline]

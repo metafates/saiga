@@ -1,4 +1,4 @@
-use saiga_vte::ansi::handler::Rgb;
+use saiga_vte::ansi::Rgb;
 
 /// A color in the `sRGB` color space.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]

@@ -383,7 +383,7 @@ impl EventLoopSender {
 pub struct State {
     write_list: VecDeque<Cow<'static, [u8]>>,
     writing: Option<Writing>,
-    parser: ansi::processor::Processor,
+    parser: ansi::Processor,
 }
 
 impl State {

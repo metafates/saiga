@@ -11,7 +11,7 @@ use saiga_backend::{
         TermMode,
     },
 };
-use saiga_vte::ansi::handler::{Color, CursorShape, CursorStyle, NamedColor};
+use saiga_vte::ansi::{Color, CursorShape, CursorStyle, NamedColor};
 use wgpu::RenderPass;
 use winit::window::Window;
 

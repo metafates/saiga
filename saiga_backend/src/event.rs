@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use crate::term::ClipboardType;
 use nix::pty::Winsize;
-use saiga_vte::ansi::handler::Rgb;
+use saiga_vte::ansi::Rgb;
 
 /// Terminal event.
 ///

@@ -582,7 +582,7 @@ pub trait Handler {
     fn clear_line(&mut self, _mode: LineClearMode) {}
 
     /// Clear screen.
-    fn clear_screen(&mut self, _mode: ClearMode) {}
+    fn clear_screen(&mut self, _mode: ScreenClearMode) {}
 
     /// Clear tab stops.
     fn clear_tabs(&mut self, _mode: TabulationClearMode) {}
@@ -956,7 +956,7 @@ pub enum LineClearMode {
 ///
 /// Relative to cursor.
 #[derive(Debug)]
-pub enum ClearMode {
+pub enum ScreenClearMode {
     /// Clear below cursor.
     Below,
     /// Clear above cursor.
@@ -1584,10 +1584,10 @@ where
             ('I', []) => handler.move_forward_tabs(next_param_or(1)),
             ('J', []) => {
                 let mode = match next_param_or(0) {
-                    0 => ClearMode::Below,
-                    1 => ClearMode::Above,
-                    2 => ClearMode::All,
-                    3 => ClearMode::Saved,
+                    0 => ScreenClearMode::Below,
+                    1 => ScreenClearMode::Above,
+                    2 => ScreenClearMode::All,
+                    3 => ScreenClearMode::Saved,
                     _ => {
                         unhandled!();
                         return;

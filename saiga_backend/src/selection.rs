@@ -13,7 +13,7 @@ use crate::grid::{Dimensions, GridCell, Indexed};
 use crate::index::{Boundary, Column, Line, Point, Side};
 use crate::term::cell::{Cell, Flags};
 use crate::term::Term;
-use saiga_vte::ansi::handler::CursorShape;
+use saiga_vte::ansi::CursorShape;
 
 /// A Point and side within that point.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
