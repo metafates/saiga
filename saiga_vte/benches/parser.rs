@@ -78,41 +78,12 @@ fn alacritty_vte(c: &mut Criterion) {
             parser.advance(&mut performer, black_box(BAT_OUTPUT));
         });
     });
+
     group.bench_function("batch utf8", |b| {
         b.iter(|| {
             parser.advance(&mut performer, black_box(BIG_UTF8));
         });
     });
-    //
-    // group.bench_function("chunks", |b| {
-    //     b.iter(|| {
-    //         for chunk in BAT_OUTPUT.chunks(256) {
-    //             parser.advance(&mut performer, black_box(chunk));
-    //         }
-    //     });
-    // });
-    // group.bench_function("chunks utf8", |b| {
-    //     b.iter(|| {
-    //         for chunk in BIG_UTF8.chunks(256) {
-    //             parser.advance(&mut performer, black_box(chunk));
-    //         }
-    //     });
-    // });
-    //
-    // group.bench_function("sequential", |b| {
-    //     b.iter(|| {
-    //         for &byte in BAT_OUTPUT {
-    //             parser.advance(&mut performer, black_box(&[byte]));
-    //         }
-    //     })
-    // });
-    // group.bench_function("sequential utf8", |b| {
-    //     b.iter(|| {
-    //         for &byte in BIG_UTF8 {
-    //             parser.advance(&mut performer, black_box(&[byte]));
-    //         }
-    //     })
-    // });
 
     group.finish()
 }
@@ -134,38 +105,6 @@ fn parser_advance(c: &mut Criterion) {
             parser.advance(&mut performer, black_box(BIG_UTF8));
         });
     });
-    //
-    // group.bench_function("chunks", |b| {
-    //     b.iter(|| {
-    //         for chunk in BAT_OUTPUT.chunks(256) {
-    //             parser.advance(&mut performer, black_box(chunk));
-    //         }
-    //     });
-    // });
-    //
-    // group.bench_function("chunks utf8", |b| {
-    //     b.iter(|| {
-    //         for chunk in BIG_UTF8.chunks(256) {
-    //             parser.advance(&mut performer, black_box(chunk));
-    //         }
-    //     });
-    // });
-    //
-    // group.bench_function("sequential", |b| {
-    //     b.iter(|| {
-    //         for &byte in BAT_OUTPUT {
-    //             parser.advance(&mut performer, black_box(&[byte]));
-    //         }
-    //     })
-    // });
-    //
-    // group.bench_function("sequential utf8", |b| {
-    //     b.iter(|| {
-    //         for &byte in BIG_UTF8 {
-    //             parser.advance(&mut performer, black_box(&[byte]));
-    //         }
-    //     })
-    // });
 
     group.finish()
 }

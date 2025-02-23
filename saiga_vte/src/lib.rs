@@ -1,8 +1,9 @@
 use std::{char, mem::MaybeUninit, str};
 
-use params::Params;
+use params::{Params, ParamsIter};
 use table::{Action, State};
 
+pub mod ansi;
 pub mod params;
 mod table;
 
@@ -49,6 +50,19 @@ pub trait Perform {
     /// or the number of parameters exceeded the maximum supported length,
     /// and subsequent characters were ignored.
     fn csi_dispatch(&mut self, params: &Params, intermediates: &[u8], ignore: bool, action: char);
+
+    /// Whether the parser should terminate prematurely.
+    ///
+    /// This can be used in conjunction with
+    /// [`Parser::advance_until_terminated`] to terminate the parser after
+    /// receiving certain escape sequences like synchronized updates.
+    ///
+    /// This is checked after every parsed byte, so no expensive computation
+    /// should take place in this function.
+    #[inline(always)]
+    fn terminated(&self) -> bool {
+        false
+    }
 }
 
 const MAX_INTERMEDIATES: usize = 2;
@@ -109,13 +123,8 @@ impl Parser {
     }
 
     #[inline]
-    pub fn advance<P: Perform>(&mut self, performer: &mut P, bytes: &[u8]) {
+    pub fn advance(&mut self, performer: &mut impl Perform, bytes: &[u8]) {
         let mut i = 0;
-
-        // Handle partial codepoints from previous calls to `advance`.
-        // if self.partial_utf8_len != 0 {
-        // i += self.advance_partial_utf8(performer, bytes);
-        // }
 
         while i != bytes.len() {
             match self.next_step {
@@ -126,17 +135,36 @@ impl Parser {
                     i += 1
                 }
             }
-
-            // i += (self.next_step)(self, performer, &bytes[i..]);
-
-            // if self.state == State::Ground {
-            //     i += self.advance_ground(performer, &bytes[i..])
-            // } else {
-            //     let byte = bytes[i];
-            //     self.change_state(performer, byte);
-            //     i += 1;
-            // }
         }
+    }
+
+    /// Partially advance the parser state.
+    ///
+    /// This is equivalent to [`Self::advance`], but stops when
+    /// [`Perform::terminated`] is true after reading a byte.
+    ///
+    /// Returns the number of bytes read before termination.
+    #[inline]
+    #[must_use = "Returned value should be used to processs the remaining bytes"]
+    pub fn advance_until_terminated(
+        &mut self,
+        performer: &mut impl Perform,
+        bytes: &[u8],
+    ) -> usize {
+        let mut i = 0;
+
+        while i != bytes.len() && !performer.terminated() {
+            match self.next_step {
+                AdvanceStep::Ground => i += self.advance_ground(performer, &bytes[i..]),
+                AdvanceStep::PartialUtf8 => i += self.advance_partial_utf8(performer, &bytes[i..]),
+                AdvanceStep::ChangeState => {
+                    self.change_state(performer, bytes[i]);
+                    i += 1
+                }
+            }
+        }
+
+        i
     }
 
     /// Advance the parser state from ground.
@@ -145,7 +173,7 @@ impl Parser {
     /// the escape character (`\x1b`). This allows more efficient parsing by
     /// using SIMD search with [`memchr`].
     #[inline]
-    fn advance_ground<P: Perform>(&mut self, performer: &mut P, bytes: &[u8]) -> usize {
+    fn advance_ground(&mut self, performer: &mut impl Perform, bytes: &[u8]) -> usize {
         // Find the next escape character.
         let num_bytes = bytes.len();
         let plain_chars = memchr::memchr(0x1B, bytes).unwrap_or(num_bytes);
@@ -225,7 +253,7 @@ impl Parser {
 
     /// Handle ground dispatch of print/execute for all characters in a string.
     #[inline]
-    fn ground_dispatch<P: Perform>(performer: &mut P, text: &str) {
+    fn ground_dispatch(performer: &mut impl Perform, text: &str) {
         let bytes = text.as_bytes();
         let mut i = 0;
 
@@ -258,7 +286,7 @@ impl Parser {
     }
 
     #[inline]
-    fn change_state<P: Perform>(&mut self, performer: &mut P, byte: u8) {
+    fn change_state(&mut self, performer: &mut impl Perform, byte: u8) {
         let (state, action) = table::change_state(self.state, byte);
 
         if state == State::Anywhere {
