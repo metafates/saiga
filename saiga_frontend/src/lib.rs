@@ -8,7 +8,12 @@ pub mod term_font;
 pub mod terminal;
 pub mod theme;
 
-use std::{error::Error, sync::Arc};
+use std::{
+    borrow::Cow,
+    error::Error,
+    ops::Deref,
+    sync::{Arc, LazyLock, Mutex},
+};
 
 use display::Display;
 use font::{Family, Font};
@@ -27,6 +32,36 @@ use winit::{
     keyboard::KeyCode,
     window::Window,
 };
+
+static CLIPBOARD: LazyLock<Option<Mutex<arboard::Clipboard>>> =
+    LazyLock::new(|| arboard::Clipboard::new().ok().map(Mutex::new));
+
+fn clipboard_get_text() -> Option<String> {
+    let Some(clipboard) = CLIPBOARD.deref() else {
+        return None;
+    };
+
+    let Ok(mut clipboard) = clipboard.lock() else {
+        return None;
+    };
+
+    clipboard.get_text().ok()
+}
+
+fn clipboard_set_text<'a, T>(text: T)
+where
+    T: Into<Cow<'a, str>>,
+{
+    let Some(clipboard) = CLIPBOARD.deref() else {
+        return;
+    };
+
+    let Ok(mut clipboard) = clipboard.lock() else {
+        return;
+    };
+
+    let _ = clipboard.set_text(text);
+}
 
 pub fn run() -> Result<(), Box<dyn Error>> {
     let runtime = tokio::runtime::Runtime::new()?;
@@ -63,18 +98,18 @@ struct State<'a> {
 }
 
 impl State<'_> {
-    pub async fn new(settings: Settings, sender: mpsc::Sender<Event>, window: Arc<Window>) -> Self {
-        let mut display = Display::new(window).await;
-
-        let mut terminal = Terminal::new(1, &mut display.context.font_system, settings);
-        terminal.init_backend(sender);
-
-        Self {
-            terminal,
-            display,
-            mods: Mods::empty(),
-        }
-    }
+    // pub async fn new(settings: Settings, sender: mpsc::Sender<Event>, window: Arc<Window>) -> Self {
+    //     let mut display = Display::new(window).await;
+    //
+    //     let mut terminal = Terminal::new(1, &mut display.context.font_system, settings);
+    //     terminal.init_backend(sender);
+    //
+    //     Self {
+    //         terminal,
+    //         display,
+    //         mods: Mods::empty(),
+    //     }
+    // }
 
     pub fn render(&mut self) {
         self.display.render(&mut self.terminal);
@@ -163,6 +198,14 @@ impl State<'_> {
                     self.sync_size();
                     return;
                 }
+                saiga_input::Key::V => {
+                    if let Some(text) = clipboard_get_text() {
+                        // TODO: support bracketed paste
+                        self.terminal.write(text.into_bytes());
+                    }
+
+                    return;
+                }
                 _ => {}
             }
         }
@@ -215,6 +258,26 @@ impl App<'_> {
             event_loop_proxy: proxy,
         }
     }
+
+    async fn init_state(
+        &mut self,
+        settings: Settings,
+        sender: mpsc::Sender<Event>,
+        window: Arc<Window>,
+    ) {
+        let mut display = Display::new(window).await;
+
+        let mut terminal = Terminal::new(1, &mut display.context.font_system, settings);
+        terminal.init_backend(sender);
+
+        let state = State {
+            terminal,
+            display,
+            mods: Mods::empty(),
+        };
+
+        self.state = Some(state);
+    }
 }
 
 impl ApplicationHandler<Event> for App<'_> {
@@ -226,7 +289,9 @@ impl ApplicationHandler<Event> for App<'_> {
             .expect("window must be created");
 
         let (sender, mut receiver) = mpsc::channel(100);
-        let state = State::new(self.settings.clone(), sender, Arc::new(window)).block_on();
+
+        self.init_state(self.settings.clone(), sender, Arc::new(window))
+            .block_on();
 
         let proxy = self.event_loop_proxy.clone();
 
@@ -235,8 +300,6 @@ impl ApplicationHandler<Event> for App<'_> {
                 proxy.send_event(event).unwrap();
             }
         });
-
-        self.state = Some(state)
     }
 
     fn user_event(&mut self, event_loop: &winit::event_loop::ActiveEventLoop, event: Event) {
@@ -253,8 +316,22 @@ impl ApplicationHandler<Event> for App<'_> {
             }
             Event::PtyWrite(payload) => state.terminal.write(payload.into_bytes()),
             Event::Exit => event_loop.exit(),
-            // TODO: check if it's slow? since we are acquire mutex for it in backend.color()
-            //
+            Event::ClipboardStore(_clipboard_type, data) => {
+                // TODO: handle clipboard type
+                // TODO: support bracketed paste
+
+                clipboard_set_text(data);
+            }
+            Event::ClipboardLoad(_clipboard_type, fmt) => {
+                let Some(text) = clipboard_get_text() else {
+                    return;
+                };
+
+                // TODO: handle clipboard type
+                // TODO: support bracketed paste
+
+                state.terminal.write(fmt(&text).into_bytes());
+            }
             // Event::ColorRequest(index, fmt) => {
             //     let Some(ref backend) = state.terminal.backend else {
             //         return;

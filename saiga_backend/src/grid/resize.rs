@@ -3,8 +3,6 @@
 use std::cmp::{max, min, Ordering};
 use std::mem;
 
-use log::info;
-
 use crate::index::{Boundary, Column, Line};
 use crate::term::cell::{Flags, ResetDiscriminant};
 
