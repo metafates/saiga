@@ -180,8 +180,6 @@ impl Parser {
 
         // If the next character is ESC, just process it and short-circuit.
         if plain_chars == 0 {
-            // self.state = State::Escape;
-            // self.reset_params();
             self.next_step = AdvanceStep::ChangeState;
             return 0;
         }
@@ -192,10 +190,7 @@ impl Parser {
 
                 // If there's another character, it must be escape so process it directly.
                 if plain_chars < num_bytes {
-                    // self.state = State::Escape;
-                    // self.reset_params();
                     self.next_step = AdvanceStep::ChangeState;
-                    // plain_chars + 1
                     plain_chars
                 } else {
                     plain_chars
@@ -230,10 +225,7 @@ impl Parser {
                         if plain_chars < num_bytes {
                             // Process bytes cut off by escape.
                             performer.print(char::REPLACEMENT_CHARACTER);
-                            // self.state = State::Escape;
-                            // self.reset_params();
                             self.next_step = AdvanceStep::ChangeState;
-                            // plain_chars + 1
                             plain_chars
                         } else {
                             // Process bytes cut off by the buffer end.
