@@ -64,8 +64,6 @@ where
 }
 
 pub fn run() -> Result<(), Box<dyn Error>> {
-    let runtime = tokio::runtime::Runtime::new()?;
-
     let settings = Settings {
         font: FontSettings {
             size: 16.0,
@@ -80,6 +78,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         },
         ..Default::default()
     };
+
+    let runtime = tokio::runtime::Runtime::new()?;
 
     runtime.block_on(async {
         let event_loop = EventLoop::with_user_event().build()?;

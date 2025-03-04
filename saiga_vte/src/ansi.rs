@@ -274,6 +274,7 @@ impl<T: Timeout> Processor<T> {
     }
 
     /// Synchronized update timeout.
+    #[inline(always)]
     pub fn sync_timeout(&self) -> &T {
         &self.state.sync_state.timeout
     }
@@ -281,20 +282,21 @@ impl<T: Timeout> Processor<T> {
     /// Process a new byte from the PTY.
     #[inline]
     pub fn advance(&mut self, handler: &mut impl Handler, bytes: &[u8]) {
-        let mut processed = 0;
-        while processed != bytes.len() {
+        let mut i = 0;
+        while i != bytes.len() {
             if self.state.sync_state.timeout.pending_timeout() {
-                processed += self.advance_sync(handler, &bytes[processed..]);
+                i += self.advance_sync(handler, &bytes[i..]);
             } else {
                 let mut performer = Performer::new(&mut self.state, handler);
-                processed += self
+                i += self
                     .parser
-                    .advance_until_terminated(&mut performer, &bytes[processed..]);
+                    .advance_until_terminated(&mut performer, &bytes[i..]);
             }
         }
     }
 
     /// End a synchronized update.
+    #[inline(always)]
     pub fn stop_sync(&mut self, handler: &mut impl Handler) {
         self.stop_sync_internal(handler, None);
     }

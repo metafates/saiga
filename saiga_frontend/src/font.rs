@@ -7,18 +7,12 @@ pub struct Font {
 }
 
 impl Font {
-    /// A non-monospaced sans-serif font with normal [`Weight`].
+    /// A monospaced font with normal [`Weight`].
     pub const DEFAULT: Font = Font {
-        family: Family::SansSerif,
+        family: Family::Monospace,
         weight: Weight::Normal,
         stretch: Stretch::Normal,
         style: Style::Normal,
-    };
-
-    /// A monospaced font with normal [`Weight`].
-    pub const MONOSPACE: Font = Font {
-        family: Family::Monospace,
-        ..Self::DEFAULT
     };
 
     /// Creates a non-monospaced [`Font`] with the given [`Family::Name`] and

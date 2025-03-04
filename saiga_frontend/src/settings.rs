@@ -38,7 +38,7 @@ impl Default for FontSettings {
         Self {
             size: 15.0,
             line_scale_factor: 1.3,
-            font_type: Font::MONOSPACE,
+            font_type: Font::DEFAULT,
         }
     }
 }
