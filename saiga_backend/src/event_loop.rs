@@ -266,7 +266,7 @@ where
                                     // with `EIO` if the client side hangs up.  In that case,
                                     // just loop back round for the inevitable `Exited` event.
                                     #[cfg(target_os = "linux")]
-                                    if err.raw_os_error() == Some(libc::EIO) {
+                                    if err.raw_os_error() == Some(nix::libc::EIO) {
                                         continue;
                                     }
 

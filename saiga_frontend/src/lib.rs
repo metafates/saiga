@@ -68,7 +68,9 @@ pub fn run() -> Result<(), Box<dyn Error>> {
         font: FontSettings {
             size: 16.0,
             font_type: Font {
-                family: Family::Name("JetBrainsMono Nerd Font Mono"),
+                family: Family::Name("JetBrains Mono"),
+                // family: Family::Name("JetBrainsMono Nerd Font Mono"),
+                // family: Family::Monospace,
                 ..Default::default()
             },
             ..Default::default()
@@ -208,6 +210,10 @@ impl State<'_> {
                 }
                 _ => {}
             }
+        }
+
+        if state == ElementState::Released {
+            return;
         }
 
         // TODO: fill it properly
