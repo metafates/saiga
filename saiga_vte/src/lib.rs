@@ -270,17 +270,65 @@ impl Parser {
                 continue;
             }
 
-            // Slow path: Multi-byte UTF-8
-            let (c, len) = decode_valid_multibyte_utf8(&bytes[i..]);
-            i += len;
+            let src = &bytes[i..];
 
-            // For non-ASCII, check only 0x80..=0x9F (already ≥0x80)
-            let code = c as u32;
-            if code <= 0x9F {
-                performer.execute(code as u8);
-            } else {
-                performer.print(c);
-            }
+            let first = src[0];
+
+            match first {
+                0b110_00000..=0b110_11111 => {
+                    // SAFETY: Valid UTF-8 ensures the next byte exists
+                    let b1 = unsafe { *src.get_unchecked(1) };
+                    let code = ((first as u32 & 0x1F) << 6) | (b1 as u32 & 0x3F);
+
+                    if code <= 0x9F {
+                        performer.execute(code as u8);
+                    } else {
+                        performer.print(unsafe { char::from_u32_unchecked(code) });
+                    }
+
+                    i += 2;
+                }
+                0b1110_0000..=0b1110_1111 => {
+                    // SAFETY: Valid UTF-8 ensures the next two bytes exist
+                    let b1 = unsafe { *src.get_unchecked(1) };
+                    let b2 = unsafe { *src.get_unchecked(2) };
+                    let code = ((first as u32 & 0x0F) << 12)
+                        | ((b1 as u32 & 0x3F) << 6)
+                        | (b2 as u32 & 0x3F);
+
+                    performer.print(unsafe { char::from_u32_unchecked(code) });
+                    i += 3;
+                }
+                0b1111_0000..=0b1111_0111 => {
+                    // SAFETY: Valid UTF-8 ensures the next three bytes exist
+                    let b1 = unsafe { *src.get_unchecked(1) };
+                    let b2 = unsafe { *src.get_unchecked(2) };
+                    let b3 = unsafe { *src.get_unchecked(3) };
+                    let code = ((first as u32 & 0x07) << 18)
+                        | ((b1 as u32 & 0x3F) << 12)
+                        | ((b2 as u32 & 0x3F) << 6)
+                        | (b3 as u32 & 0x3F);
+
+                    performer.print(unsafe { char::from_u32_unchecked(code) });
+                    i += 4;
+                }
+                _ => {
+                    performer.print(char::REPLACEMENT_CHARACTER);
+                    i += 1;
+                }
+            };
+
+            // Slow path: Multi-byte UTF-8
+            // let (c, len) = decode_valid_multibyte_utf8(&bytes[i..]);
+            // i += len;
+            //
+            // // For non-ASCII, check only 0x80..=0x9F (already ≥0x80)
+            // let code = c as u32;
+            // if code <= 0x9F {
+            //     performer.execute(code as u8);
+            // } else {
+            //     performer.print(c);
+            // }
         }
     }
 
