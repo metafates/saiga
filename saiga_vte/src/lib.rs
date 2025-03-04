@@ -255,9 +255,26 @@ impl Parser {
         let bytes = text.as_bytes();
         let mut i = 0;
 
+        // Fast path: ASCII only characters
+        if bytes.is_ascii() {
+            while i < bytes.len() {
+                let byte = unsafe { *bytes.get_unchecked(i) };
+                i += 1;
+
+                if byte <= 0x1F {
+                    performer.execute(byte);
+                } else {
+                    performer.print(byte as char);
+                }
+            }
+
+            return;
+        }
+
         while i < bytes.len() {
             let byte = unsafe { *bytes.get_unchecked(i) };
-            // Fast path: ASCII characters
+
+            // Fast path: ASCII character
             if byte <= 0x7F {
                 i += 1;
 
@@ -270,28 +287,38 @@ impl Parser {
                 continue;
             }
 
-            let src = &bytes[i..];
+            let chunk = unsafe { bytes.get_unchecked(i..) };
 
-            let first = src[0];
+            let first = unsafe { *chunk.get_unchecked(0) };
 
             match first {
                 0b110_00000..=0b110_11111 => {
                     // SAFETY: Valid UTF-8 ensures the next byte exists
-                    let b1 = unsafe { *src.get_unchecked(1) };
-                    let code = ((first as u32 & 0x1F) << 6) | (b1 as u32 & 0x3F);
+                    let b1 = unsafe { *chunk.get_unchecked(1) };
 
-                    if code <= 0x9F {
-                        performer.execute(code as u8);
+                    if first == 0xC2 && (b1 & 0x3F) <= 0x1F {
+                        performer.execute(b1);
                     } else {
+                        let code = ((first as u32 & 0x1F) << 6) | (b1 as u32 & 0x3F);
                         performer.print(unsafe { char::from_u32_unchecked(code) });
                     }
 
                     i += 2;
+                    // let b1 = unsafe { *src.get_unchecked(1) };
+                    // let code = ((first as u32 & 0x1F) << 6) | (b1 as u32 & 0x3F);
+                    //
+                    // if code <= 0x9F {
+                    //     performer.execute(code as u8);
+                    // } else {
+                    //     performer.print(unsafe { char::from_u32_unchecked(code) });
+                    // }
+                    //
+                    // i += 2;
                 }
                 0b1110_0000..=0b1110_1111 => {
                     // SAFETY: Valid UTF-8 ensures the next two bytes exist
-                    let b1 = unsafe { *src.get_unchecked(1) };
-                    let b2 = unsafe { *src.get_unchecked(2) };
+                    let b1 = unsafe { *chunk.get_unchecked(1) };
+                    let b2 = unsafe { *chunk.get_unchecked(2) };
                     let code = ((first as u32 & 0x0F) << 12)
                         | ((b1 as u32 & 0x3F) << 6)
                         | (b2 as u32 & 0x3F);
@@ -301,9 +328,9 @@ impl Parser {
                 }
                 0b1111_0000..=0b1111_0111 => {
                     // SAFETY: Valid UTF-8 ensures the next three bytes exist
-                    let b1 = unsafe { *src.get_unchecked(1) };
-                    let b2 = unsafe { *src.get_unchecked(2) };
-                    let b3 = unsafe { *src.get_unchecked(3) };
+                    let b1 = unsafe { *chunk.get_unchecked(1) };
+                    let b2 = unsafe { *chunk.get_unchecked(2) };
+                    let b3 = unsafe { *chunk.get_unchecked(3) };
                     let code = ((first as u32 & 0x07) << 18)
                         | ((b1 as u32 & 0x3F) << 12)
                         | ((b2 as u32 & 0x3F) << 6)
@@ -317,18 +344,6 @@ impl Parser {
                     i += 1;
                 }
             };
-
-            // Slow path: Multi-byte UTF-8
-            // let (c, len) = decode_valid_multibyte_utf8(&bytes[i..]);
-            // i += len;
-            //
-            // // For non-ASCII, check only 0x80..=0x9F (already ≥0x80)
-            // let code = c as u32;
-            // if code <= 0x9F {
-            //     performer.execute(code as u8);
-            // } else {
-            //     performer.print(c);
-            // }
         }
     }
 

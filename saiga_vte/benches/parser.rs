@@ -64,8 +64,9 @@ impl vte::Perform for NopPerformer {
     }
 }
 
-const BAT_OUTPUT: &[u8] = include_bytes!("bat.ansi");
-const BIG_UTF8: &[u8] = include_bytes!("utf8.ansi");
+const BAT_OUTPUT: &[u8] = include_bytes!("bat.txt");
+const BIG_UTF8: &[u8] = include_bytes!("utf8.txt");
+const BIG_ASCII: &[u8] = include_bytes!("ascii.txt");
 
 fn alacritty_vte(c: &mut Criterion) {
     let mut parser = vte::Parser::new();
@@ -82,6 +83,12 @@ fn alacritty_vte(c: &mut Criterion) {
     group.bench_function("batch utf8", |b| {
         b.iter(|| {
             parser.advance(&mut performer, black_box(BIG_UTF8));
+        });
+    });
+
+    group.bench_function("batch ascii", |b| {
+        b.iter(|| {
+            parser.advance(&mut performer, black_box(BIG_ASCII));
         });
     });
 
@@ -103,6 +110,12 @@ fn parser_advance(c: &mut Criterion) {
     group.bench_function("batch utf8", |b| {
         b.iter(|| {
             parser.advance(&mut performer, black_box(BIG_UTF8));
+        });
+    });
+
+    group.bench_function("batch ascii", |b| {
+        b.iter(|| {
+            parser.advance(&mut performer, black_box(BIG_ASCII));
         });
     });
 
