@@ -256,7 +256,7 @@ impl Parser {
         let mut i = 0;
 
         while i < bytes.len() {
-            let byte = *unsafe { bytes.get_unchecked(i) };
+            let byte = unsafe { *bytes.get_unchecked(i) };
             // Fast path: ASCII characters
             if byte <= 0x7F {
                 i += 1;
@@ -303,12 +303,21 @@ impl Parser {
 
     #[inline(always)]
     fn execute_state_exit_action(&mut self, performer: &mut impl Perform, byte: u8) {
-        self.execute_action(performer, table::state_exit_action(self.state), byte);
+        match self.state {
+            State::DcsPassthrough => self.action_unhook(performer, byte),
+            State::OscString => self.action_osc_end(performer, byte),
+            _ => (),
+        }
     }
 
     #[inline(always)]
     fn execute_state_entry_action(&mut self, performer: &mut impl Perform, byte: u8) {
-        self.execute_action(performer, table::state_entry_action(self.state), byte);
+        match self.state {
+            State::Escape | State::CsiEntry | State::DcsEntry => self.action_clear(performer, byte),
+            State::OscString => self.action_osc_start(performer, byte),
+            State::DcsPassthrough => self.action_hook(performer, byte),
+            _ => (),
+        }
     }
 
     #[inline(always)]

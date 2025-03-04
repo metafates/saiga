@@ -160,39 +160,6 @@ pub const fn change_state(state: State, byte: u8) -> (State, Action) {
     CHANGES[state as usize][byte as usize]
 }
 
-#[inline(always)]
-pub const fn state_exit_action(state: State) -> Action {
-    const LEN: usize = State::Anywhere as usize + 1;
-    const ACTIONS: [Action; LEN] = {
-        let mut result = [Action::Ignore; LEN];
-
-        result[State::DcsPassthrough as usize] = Action::Unhook;
-        result[State::OscString as usize] = Action::OscEnd;
-
-        result
-    };
-
-    ACTIONS[state as usize]
-}
-
-#[inline(always)]
-pub const fn state_entry_action(state: State) -> Action {
-    const LEN: usize = State::Anywhere as usize + 1;
-    const ACTIONS: [Action; LEN] = {
-        let mut result = [Action::Ignore; LEN];
-
-        result[State::CsiEntry as usize] = Action::Clear;
-        result[State::DcsEntry as usize] = Action::Clear;
-        result[State::Escape as usize] = Action::Clear;
-        result[State::OscString as usize] = Action::OscStart;
-        result[State::DcsPassthrough as usize] = Action::Hook;
-
-        result
-    };
-
-    ACTIONS[state as usize]
-}
-
 // Based on https://vt100.net/emu/dec_ansi_parser
 const fn change_state_raw(state: State, byte: u8) -> Option<(State, Action)> {
     use Action::*;
