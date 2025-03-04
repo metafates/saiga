@@ -256,7 +256,7 @@ impl Parser {
         let mut i = 0;
 
         while i < bytes.len() {
-            let byte = bytes[i];
+            let byte = *unsafe { bytes.get_unchecked(i) };
             // Fast path: ASCII characters
             if byte <= 0x7F {
                 i += 1;
@@ -271,7 +271,7 @@ impl Parser {
             }
 
             // Slow path: Multi-byte UTF-8
-            let (c, len) = decode_multibyte_utf8(&bytes[i..]);
+            let (c, len) = decode_valid_multibyte_utf8(&bytes[i..]);
             i += len;
 
             // For non-ASCII, check only 0x80..=0x9F (already ≥0x80)
@@ -466,11 +466,6 @@ impl Parser {
         let mut slices: [MaybeUninit<&[u8]>; MAX_OSC_PARAMS] =
             unsafe { MaybeUninit::uninit().assume_init() };
 
-        // for (i, slice) in slices.iter_mut().enumerate().take(self.osc_num_params) {
-        //     let indices = self.osc_params[i];
-        //     *slice = MaybeUninit::new(&self.osc_raw[indices.0..indices.1]);
-        // }
-
         let params = &self.osc_params[..self.osc_num_params];
         for (slice, indices) in slices.iter_mut().zip(params) {
             let raw_slice = unsafe { self.osc_raw.get_unchecked(indices.0..indices.1) };
@@ -586,25 +581,40 @@ impl Parser {
 }
 
 #[inline(always)]
-fn decode_multibyte_utf8(src: &[u8]) -> (char, usize) {
+fn decode_valid_multibyte_utf8(src: &[u8]) -> (char, usize) {
     let first = src[0];
     let (code, len) = match first {
-        0b110_00000..=0b110_11111 => (((first as u32 & 0x1F) << 6) | (src[1] as u32 & 0x3F), 2),
-        0b1110_0000..=0b1110_1111 => (
-            ((first as u32 & 0x0F) << 12) | ((src[1] as u32 & 0x3F) << 6) | (src[2] as u32 & 0x3F),
-            3,
-        ),
-        0b1111_0000..=0b1111_0111 => (
-            ((first as u32 & 0x07) << 18)
-                | ((src[1] as u32 & 0x3F) << 12)
-                | ((src[2] as u32 & 0x3F) << 6)
-                | (src[3] as u32 & 0x3F),
-            4,
-        ),
-        _ => return (char::REPLACEMENT_CHARACTER, 1), // invalid utf8
+        0b110_00000..=0b110_11111 => {
+            // SAFETY: Valid UTF-8 ensures the next byte exists
+            let b1 = unsafe { *src.get_unchecked(1) };
+            (((first as u32 & 0x1F) << 6) | (b1 as u32 & 0x3F), 2)
+        }
+        0b1110_0000..=0b1110_1111 => {
+            // SAFETY: Valid UTF-8 ensures the next two bytes exist
+            let b1 = unsafe { *src.get_unchecked(1) };
+            let b2 = unsafe { *src.get_unchecked(2) };
+            (
+                ((first as u32 & 0x0F) << 12) | ((b1 as u32 & 0x3F) << 6) | (b2 as u32 & 0x3F),
+                3,
+            )
+        }
+        0b1111_0000..=0b1111_0111 => {
+            // SAFETY: Valid UTF-8 ensures the next three bytes exist
+            let b1 = unsafe { *src.get_unchecked(1) };
+            let b2 = unsafe { *src.get_unchecked(2) };
+            let b3 = unsafe { *src.get_unchecked(3) };
+            (
+                ((first as u32 & 0x07) << 18)
+                    | ((b1 as u32 & 0x3F) << 12)
+                    | ((b2 as u32 & 0x3F) << 6)
+                    | (b3 as u32 & 0x3F),
+                4,
+            )
+        }
+        _ => return (char::REPLACEMENT_CHARACTER, 1),
     };
 
-    // SAFETY: `code` is derived from valid UTF-8 bytes
+    // SAFETY: `code` is valid as per the function's precondition
     (unsafe { char::from_u32_unchecked(code) }, len)
 }
 
