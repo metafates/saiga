@@ -187,9 +187,25 @@ impl Parser {
             return 1;
         }
 
-        match simdutf8::basic::from_utf8(&bytes[..plain_chars]) {
+        let plain_char_bytes = unsafe { bytes.get_unchecked(..plain_chars) };
+
+        if plain_char_bytes.is_ascii() {
+            Self::ground_dispatch_ascii(performer, plain_char_bytes);
+
+            // If there's another character, it must be escape so process it directly.
+            return if plain_chars < num_bytes {
+                self.next_step = AdvanceStep::ChangeState;
+                self.state = State::Escape;
+                self.action_clear();
+                plain_chars + 1
+            } else {
+                plain_chars
+            };
+        }
+
+        match simdutf8::basic::from_utf8(plain_char_bytes) {
             Ok(parsed) => {
-                Self::ground_dispatch(performer, parsed);
+                Self::ground_dispatch(performer, parsed.as_bytes());
 
                 // If there's another character, it must be escape so process it directly.
                 if plain_chars < num_bytes {
@@ -214,7 +230,7 @@ impl Parser {
                 let valid_bytes = err.valid_up_to();
                 let parsed = unsafe { str::from_utf8_unchecked(&bytes[..valid_bytes]) };
 
-                Self::ground_dispatch(performer, parsed);
+                Self::ground_dispatch(performer, parsed.as_bytes());
 
                 match err.error_len() {
                     Some(len) => {
@@ -258,29 +274,28 @@ impl Parser {
     }
 
     /// Handle ground dispatch of print/execute for all characters in a string.
+    /// Bytes must be a valid ascii string
     #[inline]
-    fn ground_dispatch(performer: &mut impl Perform, text: &str) {
+    fn ground_dispatch_ascii(performer: &mut impl Perform, bytes: &[u8]) {
+        for &byte in bytes {
+            if byte <= 0x1F {
+                performer.execute(byte);
+            } else {
+                performer.print(byte as char);
+            }
+        }
+    }
+
+    /// Handle ground dispatch of print/execute for all characters in a string.
+    /// Bytes must be a valid UTF-8 string
+    #[inline]
+    fn ground_dispatch(performer: &mut impl Perform, bytes: &[u8]) {
         // for c in text.chars() {
         //     match c {
         //         '\x00'..='\x1f' | '\u{80}'..='\u{9f}' => performer.execute(c as u8),
         //         _ => performer.print(c),
         //     }
         // }
-        let bytes = text.as_bytes();
-
-        // Fast path: ASCII only characters
-        if bytes.is_ascii() {
-            for &byte in bytes {
-                if byte <= 0x1F {
-                    performer.execute(byte);
-                } else {
-                    performer.print(byte as char);
-                }
-            }
-
-            return;
-        }
-
         let mut i = 0;
 
         while i < bytes.len() {
