@@ -67,7 +67,7 @@ impl Backend {
         let config = term::Config::default();
 
         let term_size = TermSize {
-            cell_width: font_size.width.round() as u16,
+            cell_width: font_size.width.ceil() as u16,
             cell_height: font_size.height.ceil() as u16,
             ..Default::default()
         };
@@ -112,7 +112,7 @@ impl Backend {
 
         if let Some(size) = font_measure {
             self.size.cell_height = size.height.ceil() as u16;
-            self.size.cell_width = size.width.round() as u16;
+            self.size.cell_width = size.width.ceil() as u16;
         }
 
         let lines = (self.size.surface_height / self.size.cell_height as f32).floor() as u16;

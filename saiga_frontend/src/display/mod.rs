@@ -150,7 +150,6 @@ impl Display<'_> {
     fn render_cells(&mut self, rpass: &mut RenderPass<'_>, frame: &Frame) {
         let show_cursor = frame.mode.contains(TermMode::SHOW_CURSOR);
 
-        // let count = frame.grid.columns() * frame.grid.screen_lines();
         let count = match frame.damage {
             Damage::Full => frame.grid.columns() * frame.grid.screen_lines(),
             Damage::Partial(lines) => frame.grid.columns() * lines.len(),

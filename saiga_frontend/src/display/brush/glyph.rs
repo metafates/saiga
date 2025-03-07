@@ -108,13 +108,10 @@ impl Brush {
             custom_glyphs: &[],
         });
 
-        {
-            if let Err(PrepareError::AtlasFull) = self.prepare(ctx, text_areas.clone()) {
-                self.atlas.trim();
+        if let Err(PrepareError::AtlasFull) = self.prepare(ctx, text_areas.clone()) {
+            self.atlas.trim();
 
-                // TODO: prepare again
-                self.prepare(ctx, text_areas).unwrap();
-            }
+            self.prepare(ctx, text_areas).unwrap();
         }
 
         self.text_renderer

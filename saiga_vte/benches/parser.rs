@@ -64,9 +64,71 @@ impl vte::Perform for NopPerformer {
     }
 }
 
+impl vtparse::VTActor for NopPerformer {
+    fn print(&mut self, b: char) {}
+
+    fn execute_c0_or_c1(&mut self, control: u8) {}
+
+    fn dcs_hook(
+        &mut self,
+        mode: u8,
+        params: &[i64],
+        intermediates: &[u8],
+        ignored_excess_intermediates: bool,
+    ) {
+    }
+
+    fn dcs_put(&mut self, byte: u8) {}
+
+    fn dcs_unhook(&mut self) {}
+
+    fn esc_dispatch(
+        &mut self,
+        params: &[i64],
+        intermediates: &[u8],
+        ignored_excess_intermediates: bool,
+        byte: u8,
+    ) {
+    }
+
+    fn csi_dispatch(&mut self, params: &[vtparse::CsiParam], parameters_truncated: bool, byte: u8) {
+    }
+
+    fn osc_dispatch(&mut self, params: &[&[u8]]) {}
+
+    fn apc_dispatch(&mut self, data: Vec<u8>) {}
+}
+
 const BAT_OUTPUT: &[u8] = include_bytes!("bat.txt");
 const BIG_UTF8: &[u8] = include_bytes!("utf8.txt");
 const BIG_ASCII: &[u8] = include_bytes!("ascii.txt");
+
+fn wezterm_vte(c: &mut Criterion) {
+    let mut parser = vtparse::VTParser::new();
+    let mut actor = NopPerformer::default();
+
+    let mut group = c.benchmark_group("wezterm parser advance");
+
+    group.bench_function("batch", |b| {
+        b.iter(|| {
+            parser.parse(black_box(BAT_OUTPUT), &mut actor);
+        });
+    });
+
+    group.bench_function("batch utf8", |b| {
+        b.iter(|| {
+            parser.parse(black_box(BIG_UTF8), &mut actor);
+        });
+    });
+
+    group.bench_function("batch ascii", |b| {
+        b.iter(|| {
+            parser.parse(black_box(BIG_ASCII), &mut actor);
+        });
+    });
+
+    group.finish()
+}
 
 fn alacritty_vte(c: &mut Criterion) {
     let mut parser = vte::Parser::new();
@@ -95,7 +157,7 @@ fn alacritty_vte(c: &mut Criterion) {
     group.finish()
 }
 
-fn parser_advance(c: &mut Criterion) {
+fn saiga_vte(c: &mut Criterion) {
     let mut parser = saiga_vte::Parser::new();
     let mut performer = NopPerformer::default();
 
@@ -125,7 +187,7 @@ fn parser_advance(c: &mut Criterion) {
 criterion_group! {
     name = benches;
     config = Criterion::default().measurement_time(Duration::from_secs(10)).with_profiler(PProfProfiler::new(50_000, Output::Flamegraph(None)));
-    targets = parser_advance, alacritty_vte
+    targets = saiga_vte, alacritty_vte, wezterm_vte,
 }
 
 criterion_main!(benches);
