@@ -181,18 +181,24 @@ impl Parser {
         // If the next character is ESC, just process it and short-circuit.
         if plain_chars == 0 {
             self.next_step = AdvanceStep::ChangeState;
-            return 0;
+            self.state = State::Escape;
+            self.action_clear();
+            return 1;
         }
 
         match simdutf8::compat::from_utf8(&bytes[..plain_chars]) {
             Ok(parsed) => {
                 Self::ground_dispatch(performer, parsed);
 
+                // If there's another character, it must be escape so process it directly.
                 if plain_chars < num_bytes {
                     self.next_step = AdvanceStep::ChangeState;
+                    self.state = State::Escape;
+                    self.action_clear();
+                    plain_chars + 1
+                } else {
+                    plain_chars
                 }
-
-                plain_chars
             }
             // Handle invalid and partial utf8.
             Err(err) => {
@@ -224,7 +230,9 @@ impl Parser {
                             // Process bytes cut off by escape.
                             performer.print(char::REPLACEMENT_CHARACTER);
                             self.next_step = AdvanceStep::ChangeState;
-                            plain_chars
+                            self.state = State::Escape;
+                            self.action_clear();
+                            plain_chars + 1
                         } else {
                             // Process bytes cut off by the buffer end.
                             let extra_bytes = num_bytes - valid_bytes;
@@ -354,7 +362,7 @@ impl Parser {
     #[inline(always)]
     fn execute_state_exit_action(&mut self, performer: &mut impl Perform, byte: u8) {
         match self.state {
-            State::DcsPassthrough => self.action_unhook(performer, byte),
+            State::DcsPassthrough => self.action_unhook(performer),
             State::OscString => self.action_osc_end(performer, byte),
             _ => (),
         }
@@ -363,8 +371,8 @@ impl Parser {
     #[inline(always)]
     fn execute_state_entry_action(&mut self, performer: &mut impl Perform, byte: u8) {
         match self.state {
-            State::Escape | State::CsiEntry | State::DcsEntry => self.action_clear(performer, byte),
-            State::OscString => self.action_osc_start(performer, byte),
+            State::Escape | State::CsiEntry | State::DcsEntry => self.action_clear(),
+            State::OscString => self.action_osc_start(),
             State::DcsPassthrough => self.action_hook(performer, byte),
             _ => (),
         }
@@ -378,19 +386,19 @@ impl Parser {
             Print => self.action_print(performer, byte),
             Put => self.action_put(performer, byte),
             Execute => self.action_execute(performer, byte),
-            OscStart => self.action_osc_start(performer, byte),
-            OscPut => self.action_osc_put(performer, byte),
-            OscPutParam => self.action_osc_put_param(performer, byte),
+            OscStart => self.action_osc_start(),
+            OscPut => self.action_osc_put(byte),
+            OscPutParam => self.action_osc_put_param(),
             OscEnd => self.action_osc_end(performer, byte),
             Hook => self.action_hook(performer, byte),
-            Unhook => self.action_unhook(performer, byte),
-            Param => self.action_param(performer, byte),
-            ParamNext => self.action_param_next(performer, byte),
-            Subparam => self.action_subparam(performer, byte),
+            Unhook => self.action_unhook(performer),
+            Param => self.action_param(),
+            ParamNext => self.action_param_next(byte),
+            Subparam => self.action_subparam(),
             CsiDispatch => self.action_csi_dispatch(performer, byte),
-            Collect => self.action_collect(performer, byte),
+            Collect => self.action_collect(byte),
             EscDispatch => self.action_esc_dispatch(performer, byte),
-            Clear => self.action_clear(performer, byte),
+            Clear => self.action_clear(),
             Ignore => (),
         }
     }
@@ -460,7 +468,7 @@ impl Parser {
     }
 
     #[inline]
-    fn osc_put_param(&mut self) {
+    fn action_osc_put_param(&mut self) {
         let idx = self.osc_raw.len();
 
         match self.osc_num_params {
@@ -482,11 +490,6 @@ impl Parser {
     }
 
     #[inline(always)]
-    fn action_osc_put_param(&mut self, _performer: &mut impl Perform, _byte: u8) {
-        self.osc_put_param()
-    }
-
-    #[inline(always)]
     fn action_print(&mut self, performer: &mut impl Perform, byte: u8) {
         performer.print(byte as char)
     }
@@ -502,19 +505,19 @@ impl Parser {
     }
 
     #[inline]
-    fn action_osc_start(&mut self, _performer: &mut impl Perform, _byte: u8) {
+    fn action_osc_start(&mut self) {
         self.osc_raw.clear();
         self.osc_num_params = 0;
     }
 
     #[inline(always)]
-    fn action_osc_put(&mut self, _performer: &mut impl Perform, byte: u8) {
+    fn action_osc_put(&mut self, byte: u8) {
         self.osc_raw.push(byte);
     }
 
     #[inline]
     fn action_osc_end(&mut self, performer: &mut impl Perform, byte: u8) {
-        self.osc_put_param();
+        self.action_osc_put_param();
         Self::action_osc_dispatch(self, performer, byte);
         self.osc_raw.clear();
         self.osc_num_params = 0;
@@ -555,13 +558,13 @@ impl Parser {
     }
 
     #[inline(always)]
-    fn action_unhook(&mut self, performer: &mut impl Perform, _byte: u8) {
+    fn action_unhook(&mut self, performer: &mut impl Perform) {
         performer.unhook()
     }
 
     /// Advance to the next parameter.
     #[inline]
-    fn action_param(&mut self, _performer: &mut impl Perform, _byte: u8) {
+    fn action_param(&mut self) {
         if self.params.is_full() {
             self.ignoring = true;
         } else {
@@ -572,7 +575,7 @@ impl Parser {
 
     /// Advance inside the parameter without terminating it.
     #[inline]
-    fn action_param_next(&mut self, _performer: &mut impl Perform, byte: u8) {
+    fn action_param_next(&mut self, byte: u8) {
         if self.params.is_full() {
             self.ignoring = true;
         } else {
@@ -584,7 +587,7 @@ impl Parser {
 
     /// Advance to the next subparameter.
     #[inline]
-    fn action_subparam(&mut self, _performer: &mut impl Perform, _byte: u8) {
+    fn action_subparam(&mut self) {
         if self.params.is_full() {
             self.ignoring = true;
         } else {
@@ -612,7 +615,7 @@ impl Parser {
     }
 
     #[inline]
-    fn action_collect(&mut self, _performer: &mut impl Perform, byte: u8) {
+    fn action_collect(&mut self, byte: u8) {
         if self.intermediate_idx == MAX_INTERMEDIATES {
             self.ignoring = true;
         } else {
@@ -629,7 +632,7 @@ impl Parser {
     }
 
     #[inline]
-    fn action_clear(&mut self, _performer: &mut impl Perform, _byte: u8) {
+    fn action_clear(&mut self) {
         self.param = 0;
         self.ignoring = false;
         self.intermediate_idx = 0;
