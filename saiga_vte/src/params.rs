@@ -28,38 +28,38 @@ pub struct Params {
 impl Params {
     /// Returns the number of parameters.
     #[inline(always)]
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.len
     }
 
     /// Returns `true` if there are no parameters present.
     #[inline(always)]
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         self.len == 0
     }
 
     /// Returns an iterator over all parameters and subparameters.
     #[inline]
-    pub fn iter(&self) -> ParamsIter<'_> {
+    pub const fn iter(&self) -> ParamsIter<'_> {
         ParamsIter::new(self)
     }
 
     /// Returns `true` if there is no more space for additional parameters.
     #[inline(always)]
-    pub(crate) fn is_full(&self) -> bool {
+    pub(crate) const fn is_full(&self) -> bool {
         self.len == MAX_PARAMS
     }
 
     /// Clear all parameters.
     #[inline(always)]
-    pub(crate) fn clear(&mut self) {
+    pub(crate) const fn clear(&mut self) {
         self.current_subparams = 0;
         self.len = 0;
     }
 
     /// Add an additional parameter.
     #[inline]
-    pub(crate) fn push(&mut self, item: u16) {
+    pub(crate) const fn push(&mut self, item: u16) {
         self.subparams[self.len - self.current_subparams as usize] = self.current_subparams + 1;
         self.params[self.len] = item;
         self.current_subparams = 0;
@@ -68,7 +68,7 @@ impl Params {
 
     /// Add an additional subparameter to the current parameter.
     #[inline]
-    pub(crate) fn extend(&mut self, item: u16) {
+    pub(crate) const fn extend(&mut self, item: u16) {
         self.subparams[self.len - self.current_subparams as usize] = self.current_subparams + 1;
         self.params[self.len] = item;
         self.current_subparams += 1;
@@ -92,7 +92,7 @@ pub struct ParamsIter<'a> {
 }
 
 impl<'a> ParamsIter<'a> {
-    fn new(params: &'a Params) -> Self {
+    const fn new(params: &'a Params) -> Self {
         Self { params, index: 0 }
     }
 }

@@ -259,14 +259,10 @@ impl Parser {
         //     }
         // }
         let bytes = text.as_bytes();
-        let mut i = 0;
 
         // Fast path: ASCII only characters
         if bytes.is_ascii() {
-            while i < bytes.len() {
-                let byte = unsafe { *bytes.get_unchecked(i) };
-                i += 1;
-
+            for &byte in bytes {
                 if byte <= 0x1F {
                     performer.execute(byte);
                 } else {
@@ -276,6 +272,8 @@ impl Parser {
 
             return;
         }
+
+        let mut i = 0;
 
         while i < bytes.len() {
             let byte = unsafe { *bytes.get_unchecked(i) };
@@ -481,8 +479,7 @@ impl Parser {
             // All other params depend on previous indexing.
             param_idx => {
                 let prev = self.osc_params[param_idx - 1];
-                let begin = prev.1;
-                self.osc_params[param_idx] = (begin, idx);
+                self.osc_params[param_idx] = (prev.1, idx);
             }
         }
 
