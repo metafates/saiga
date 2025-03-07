@@ -13,6 +13,8 @@ Derivation of [alacritty/vte] with a focus on being as fast as possible.
 
 ## Benchmarks
 
+Hardware: Apple MacBook Air M1 16GB RAM
+
 Saiga
 
 ```raw
