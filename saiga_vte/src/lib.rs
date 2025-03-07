@@ -183,10 +183,11 @@ impl Parser {
             self.next_step = AdvanceStep::ChangeState;
             self.state = State::Escape;
             self.action_clear();
+
             return 1;
         }
 
-        match simdutf8::compat::from_utf8(&bytes[..plain_chars]) {
+        match simdutf8::basic::from_utf8(&bytes[..plain_chars]) {
             Ok(parsed) => {
                 Self::ground_dispatch(performer, parsed);
 
@@ -200,8 +201,15 @@ impl Parser {
                     plain_chars
                 }
             }
-            // Handle invalid and partial utf8.
-            Err(err) => {
+            // Handle invalid and partial utf8. Basic does not provide useful error information,
+            // so reparse again with compat
+            Err(_) => {
+                // basic is a bit faster than compat and since invalid utf8 is very rare it's ok to
+                // optimize for happy path.
+                let err = unsafe {
+                    simdutf8::compat::from_utf8(&bytes[..plain_chars]).unwrap_err_unchecked()
+                };
+
                 // Dispatch all the valid bytes.
                 let valid_bytes = err.valid_up_to();
                 let parsed = unsafe { str::from_utf8_unchecked(&bytes[..valid_bytes]) };
