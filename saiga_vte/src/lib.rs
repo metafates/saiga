@@ -131,7 +131,7 @@ impl Parser {
                 AdvanceStep::Ground => i += self.advance_ground(performer, &bytes[i..]),
                 AdvanceStep::PartialUtf8 => i += self.advance_partial_utf8(performer, &bytes[i..]),
                 AdvanceStep::ChangeState => {
-                    self.change_state(performer, bytes[i]);
+                    self.change_state(performer, unsafe { *bytes.get_unchecked(i) });
                     i += 1
                 }
             }
@@ -188,13 +188,11 @@ impl Parser {
             Ok(parsed) => {
                 Self::ground_dispatch(performer, parsed);
 
-                // If there's another character, it must be escape so process it directly.
                 if plain_chars < num_bytes {
                     self.next_step = AdvanceStep::ChangeState;
-                    plain_chars
-                } else {
-                    plain_chars
                 }
+
+                plain_chars
             }
             // Handle invalid and partial utf8.
             Err(err) => {
@@ -534,8 +532,8 @@ impl Parser {
         }
 
         unsafe {
-            let num_params = self.osc_num_params;
-            let params = &slices[..num_params] as *const [MaybeUninit<&[u8]>] as *const [&[u8]];
+            let params =
+                &slices[..self.osc_num_params] as *const [MaybeUninit<&[u8]>] as *const [&[u8]];
             performer.osc_dispatch(&*params, byte == 0x07);
         }
     }

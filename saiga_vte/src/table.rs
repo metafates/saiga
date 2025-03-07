@@ -130,7 +130,7 @@ pub enum Action {
 }
 
 #[inline(always)]
-pub const fn change_state(state: State, byte: u8) -> (State, Action) {
+pub fn change_state(state: State, byte: u8) -> (State, Action) {
     static CHANGES: [[(State, Action); 256]; 15] = {
         let mut table = [[(State::Anywhere, Action::Ignore); 256]; 15];
 
@@ -157,7 +157,13 @@ pub const fn change_state(state: State, byte: u8) -> (State, Action) {
         table
     };
 
-    CHANGES[state as usize][byte as usize]
+    unsafe {
+        *CHANGES
+            .get_unchecked(state as usize)
+            .get_unchecked(byte as usize)
+    }
+
+    // CHANGES[state as usize][byte as usize]
 }
 
 // Based on https://vt100.net/emu/dec_ansi_parser
