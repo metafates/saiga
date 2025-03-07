@@ -204,8 +204,8 @@ impl Parser {
         }
 
         match simdutf8::basic::from_utf8(plain_char_bytes) {
-            Ok(parsed) => {
-                Self::ground_dispatch(performer, parsed.as_bytes());
+            Ok(_) => {
+                Self::ground_dispatch(performer, plain_char_bytes);
 
                 // If there's another character, it must be escape so process it directly.
                 if plain_chars < num_bytes {
@@ -227,16 +227,20 @@ impl Parser {
                 };
 
                 // Dispatch all the valid bytes.
-                let valid_bytes = err.valid_up_to();
-                let parsed = unsafe { str::from_utf8_unchecked(&bytes[..valid_bytes]) };
+                let valid_bytes_count = err.valid_up_to();
+                let valid_bytes = unsafe { bytes.get_unchecked(..valid_bytes_count) };
 
-                Self::ground_dispatch(performer, parsed.as_bytes());
+                if valid_bytes.is_ascii() {
+                    Self::ground_dispatch_ascii(performer, valid_bytes);
+                } else {
+                    Self::ground_dispatch(performer, valid_bytes);
+                }
 
                 match err.error_len() {
                     Some(len) => {
                         // Execute C1 escapes or emit replacement character.
-                        if len == 1 && bytes[valid_bytes] <= 0x9F {
-                            performer.execute(bytes[valid_bytes]);
+                        if len == 1 && bytes[valid_bytes_count] <= 0x9F {
+                            performer.execute(bytes[valid_bytes_count]);
                         } else {
                             performer.print(char::REPLACEMENT_CHARACTER);
                         }
@@ -247,7 +251,7 @@ impl Parser {
                         // `bytes[valid_bytes + len..plain_chars]`, it's easier
                         // to just skip it and invalid utf8 is pretty rare anyway.
                         // self.next_step = Self::advance_change_state;
-                        valid_bytes + len
+                        valid_bytes_count + len
                     }
                     None => {
                         if plain_chars < num_bytes {
@@ -259,10 +263,11 @@ impl Parser {
                             plain_chars + 1
                         } else {
                             // Process bytes cut off by the buffer end.
-                            let extra_bytes = num_bytes - valid_bytes;
+                            let extra_bytes = num_bytes - valid_bytes_count;
                             let partial_len = self.partial_utf8_len + extra_bytes;
-                            self.partial_utf8[self.partial_utf8_len..partial_len]
-                                .copy_from_slice(&bytes[valid_bytes..valid_bytes + extra_bytes]);
+                            self.partial_utf8[self.partial_utf8_len..partial_len].copy_from_slice(
+                                &bytes[valid_bytes_count..valid_bytes_count + extra_bytes],
+                            );
                             self.partial_utf8_len = partial_len;
                             self.next_step = AdvanceStep::PartialUtf8;
                             num_bytes
@@ -383,7 +388,7 @@ impl Parser {
     #[inline(always)]
     fn execute_state_exit_action(&mut self, performer: &mut impl Perform, byte: u8) {
         match self.state {
-            State::DcsPassthrough => self.action_unhook(performer),
+            State::DcsPassthrough => performer.unhook(),
             State::OscString => self.action_osc_end(performer, byte),
             _ => (),
         }
@@ -404,15 +409,15 @@ impl Parser {
         use Action::*;
 
         match action {
-            Print => self.action_print(performer, byte),
-            Put => self.action_put(performer, byte),
-            Execute => self.action_execute(performer, byte),
+            Print => performer.print(byte as char),
+            Put => performer.put(byte),
+            Execute => performer.execute(byte),
             OscStart => self.action_osc_start(),
             OscPut => self.action_osc_put(byte),
             OscPutParam => self.action_osc_put_param(),
             OscEnd => self.action_osc_end(performer, byte),
             Hook => self.action_hook(performer, byte),
-            Unhook => self.action_unhook(performer),
+            Unhook => performer.unhook(),
             Param => self.action_param(),
             ParamNext => self.action_param_next(byte),
             Subparam => self.action_subparam(),
@@ -509,21 +514,6 @@ impl Parser {
         self.osc_num_params += 1;
     }
 
-    #[inline(always)]
-    fn action_print(&mut self, performer: &mut impl Perform, byte: u8) {
-        performer.print(byte as char)
-    }
-
-    #[inline(always)]
-    fn action_put(&mut self, performer: &mut impl Perform, byte: u8) {
-        performer.put(byte)
-    }
-
-    #[inline(always)]
-    fn action_execute(&mut self, performer: &mut impl Perform, byte: u8) {
-        performer.execute(byte)
-    }
-
     #[inline]
     fn action_osc_start(&mut self) {
         self.osc_raw.clear();
@@ -555,8 +545,8 @@ impl Parser {
         }
 
         unsafe {
-            let params =
-                &slices[..self.osc_num_params] as *const [MaybeUninit<&[u8]>] as *const [&[u8]];
+            let params = slices.get_unchecked(..self.osc_num_params)
+                as *const [MaybeUninit<&[u8]>] as *const [&[u8]];
             performer.osc_dispatch(&*params, byte == 0x07);
         }
     }
@@ -575,11 +565,6 @@ impl Parser {
             self.ignoring,
             byte as char,
         );
-    }
-
-    #[inline(always)]
-    fn action_unhook(&mut self, performer: &mut impl Perform) {
-        performer.unhook()
     }
 
     /// Advance to the next parameter.
