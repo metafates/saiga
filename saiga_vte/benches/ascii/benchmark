@@ -1,0 +1,5 @@
+#!/bin/sh
+
+for _ in $(seq 1000); do
+    awk 'BEGIN{for (i=0;i<=127;i++) printf("%c", i)}'
+done

@@ -1,0 +1,17 @@
+generate-bench-data:
+    ./benches/cursor_motion/benchmark > ./benches/cursor_motion/out
+    ./benches/dense_cells/benchmark > ./benches/dense_cells/out
+    ./benches/light_cells/benchmark > ./benches/light_cells/out
+    ./benches/medium_cells/benchmark > ./benches/medium_cells/out
+    ./benches/scrolling/benchmark > ./benches/scrolling/out
+    ./benches/scrolling_bottom_region/benchmark > ./benches/scrolling_bottom_region/out
+    ./benches/scrolling_bottom_small_region/benchmark > ./benches/scrolling_bottom_small_region/out
+    ./benches/scrolling_fullscreen/benchmark > ./benches/scrolling_fullscreen/out
+    ./benches/scrolling_top_region/benchmark > ./benches/scrolling_top_region/out
+    ./benches/scrolling_top_small_region/benchmark > ./benches/scrolling_top_small_region/out
+    ./benches/sync_medium_cells/benchmark > ./benches/sync_medium_cells/out
+    ./benches/unicode/benchmark > ./benches/unicode/out
+    ./benches/ascii/benchmark > ./benches/ascii/out
+
+cleanup:
+    rm -f ./benches/**/out

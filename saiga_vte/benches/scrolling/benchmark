@@ -1,0 +1,7 @@
+#!/bin/sh
+
+# Scroll all lines up as quickly as possible.
+
+for _ in $(seq 100000); do
+    printf "y\n"
+done

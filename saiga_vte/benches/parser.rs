@@ -1,17 +1,22 @@
 use std::time::Duration;
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use pprof::criterion::{Output, PProfProfiler};
 
 #[derive(Default)]
 struct NopPerformer {}
 
 impl saiga_vte::Perform for NopPerformer {
-    fn print(&mut self, _c: char) {}
+    fn print(&mut self, c: char) {
+        black_box(c);
+    }
 
-    fn execute(&mut self, _byte: u8) {}
+    fn execute(&mut self, byte: u8) {
+        black_box(byte);
+    }
 
-    fn put(&mut self, _byte: u8) {}
+    fn put(&mut self, byte: u8) {
+        black_box(byte);
+    }
 
     fn hook(
         &mut self,
@@ -20,13 +25,20 @@ impl saiga_vte::Perform for NopPerformer {
         ignore: bool,
         action: char,
     ) {
+        black_box((params, intermediates, ignore, action));
     }
 
-    fn unhook(&mut self) {}
+    fn unhook(&mut self) {
+        black_box(());
+    }
 
-    fn osc_dispatch(&mut self, _params: &[&[u8]], _bell_terminated: bool) {}
+    fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
+        black_box((params, bell_terminated));
+    }
 
-    fn esc_dispatch(&mut self, _intermediates: &[u8], _ignore: bool, _byte: u8) {}
+    fn esc_dispatch(&mut self, intermediates: &[u8], ignore: bool, byte: u8) {
+        black_box((intermediates, ignore, byte));
+    }
 
     fn csi_dispatch(
         &mut self,
@@ -35,39 +47,58 @@ impl saiga_vte::Perform for NopPerformer {
         ignore: bool,
         action: char,
     ) {
+        black_box((params, intermediates, ignore, action));
     }
 }
 
 impl vte::Perform for NopPerformer {
-    fn print(&mut self, _c: char) {}
-
-    fn execute(&mut self, _byte: u8) {}
-
-    fn put(&mut self, _byte: u8) {}
-
-    fn hook(&mut self, _params: &vte::Params, _intermediates: &[u8], _ignore: bool, _action: char) {
+    fn print(&mut self, c: char) {
+        black_box(c);
     }
 
-    fn unhook(&mut self) {}
+    fn execute(&mut self, byte: u8) {
+        black_box(byte);
+    }
 
-    fn osc_dispatch(&mut self, _params: &[&[u8]], _bell_terminated: bool) {}
+    fn put(&mut self, byte: u8) {
+        black_box(byte);
+    }
 
-    fn esc_dispatch(&mut self, _intermediates: &[u8], _ignore: bool, _byte: u8) {}
+    fn hook(&mut self, params: &vte::Params, intermediates: &[u8], ignore: bool, action: char) {
+        black_box((params, intermediates, ignore, action));
+    }
+
+    fn unhook(&mut self) {
+        black_box(());
+    }
+
+    fn osc_dispatch(&mut self, params: &[&[u8]], bell_terminated: bool) {
+        black_box((params, bell_terminated));
+    }
+
+    fn esc_dispatch(&mut self, intermediates: &[u8], ignore: bool, byte: u8) {
+        black_box((intermediates, ignore, byte));
+    }
 
     fn csi_dispatch(
         &mut self,
-        _params: &vte::Params,
-        _intermediates: &[u8],
-        _ignore: bool,
-        _action: char,
+        params: &vte::Params,
+        intermediates: &[u8],
+        ignore: bool,
+        action: char,
     ) {
+        black_box((params, intermediates, ignore, action));
     }
 }
 
 impl vtparse::VTActor for NopPerformer {
-    fn print(&mut self, b: char) {}
+    fn print(&mut self, b: char) {
+        black_box(b);
+    }
 
-    fn execute_c0_or_c1(&mut self, control: u8) {}
+    fn execute_c0_or_c1(&mut self, control: u8) {
+        black_box(control);
+    }
 
     fn dcs_hook(
         &mut self,
@@ -76,11 +107,16 @@ impl vtparse::VTActor for NopPerformer {
         intermediates: &[u8],
         ignored_excess_intermediates: bool,
     ) {
+        black_box((mode, params, intermediates, ignored_excess_intermediates));
     }
 
-    fn dcs_put(&mut self, byte: u8) {}
+    fn dcs_put(&mut self, byte: u8) {
+        black_box(byte);
+    }
 
-    fn dcs_unhook(&mut self) {}
+    fn dcs_unhook(&mut self) {
+        black_box(());
+    }
 
     fn esc_dispatch(
         &mut self,
@@ -89,105 +125,80 @@ impl vtparse::VTActor for NopPerformer {
         ignored_excess_intermediates: bool,
         byte: u8,
     ) {
+        black_box((params, intermediates, ignored_excess_intermediates, byte));
     }
 
     fn csi_dispatch(&mut self, params: &[vtparse::CsiParam], parameters_truncated: bool, byte: u8) {
+        black_box((params, parameters_truncated, byte));
     }
 
-    fn osc_dispatch(&mut self, params: &[&[u8]]) {}
+    fn osc_dispatch(&mut self, params: &[&[u8]]) {
+        black_box(params);
+    }
 
-    fn apc_dispatch(&mut self, data: Vec<u8>) {}
+    fn apc_dispatch(&mut self, data: Vec<u8>) {
+        black_box(data);
+    }
 }
 
-const BAT_OUTPUT: &[u8] = include_bytes!("bat.txt");
-const BIG_UTF8: &[u8] = include_bytes!("utf8.txt");
-const BIG_ASCII: &[u8] = include_bytes!("ascii.txt");
-
-fn wezterm_vte(c: &mut Criterion) {
-    let mut parser = vtparse::VTParser::new();
-    let mut actor = NopPerformer::default();
-
-    let mut group = c.benchmark_group("wezterm parser advance");
-
-    group.bench_function("batch", |b| {
-        b.iter(|| {
-            parser.parse(black_box(BAT_OUTPUT), &mut actor);
-        });
-    });
-
-    group.bench_function("batch utf8", |b| {
-        b.iter(|| {
-            parser.parse(black_box(BIG_UTF8), &mut actor);
-        });
-    });
-
-    group.bench_function("batch ascii", |b| {
-        b.iter(|| {
-            parser.parse(black_box(BIG_ASCII), &mut actor);
-        });
-    });
-
-    group.finish()
-}
-
-fn alacritty_vte(c: &mut Criterion) {
-    let mut parser = vte::Parser::new();
+fn vte(c: &mut Criterion) {
     let mut performer = NopPerformer::default();
 
-    let mut group = c.benchmark_group("alacritty parser advance");
+    let mut wezterm_parser = vtparse::VTParser::new();
+    let mut alacritty_parser = vte::Parser::new();
+    let mut saiga_parser = saiga_vte::Parser::new();
 
-    group.bench_function("batch", |b| {
-        b.iter(|| {
-            parser.advance(&mut performer, black_box(BAT_OUTPUT));
+    macro_rules! suite {
+        ($name:literal) => {
+            ($name, include_bytes!(concat!($name, "/out")) as &[u8])
+        };
+    }
+
+    for (name, input) in [
+        suite!("unicode"),
+        suite!("ascii"),
+        suite!("cursor_motion"),
+        suite!("dense_cells"),
+        suite!("light_cells"),
+        suite!("medium_cells"),
+        suite!("scrolling"),
+        suite!("scrolling_bottom_region"),
+        suite!("scrolling_bottom_small_region"),
+        suite!("scrolling_fullscreen"),
+        suite!("scrolling_top_region"),
+        suite!("scrolling_top_small_region"),
+        suite!("sync_medium_cells"),
+    ] {
+        let mut group = c.benchmark_group(name);
+
+        group.throughput(criterion::Throughput::Bytes(input.len() as u64));
+
+        group.bench_with_input("saiga", input, |b, i| {
+            b.iter(|| {
+                saiga_parser.advance(&mut performer, i);
+            });
         });
-    });
 
-    group.bench_function("batch utf8", |b| {
-        b.iter(|| {
-            parser.advance(&mut performer, black_box(BIG_UTF8));
+        group.bench_with_input("alacritty", input, |b, i| {
+            b.iter(|| {
+                alacritty_parser.advance(&mut performer, i);
+            });
         });
-    });
 
-    group.bench_function("batch ascii", |b| {
-        b.iter(|| {
-            parser.advance(&mut performer, black_box(BIG_ASCII));
+        group.bench_with_input("wezterm", input, |b, i| {
+            b.iter(|| {
+                wezterm_parser.parse(i, &mut performer);
+            });
         });
-    });
 
-    group.finish()
-}
-
-fn saiga_vte(c: &mut Criterion) {
-    let mut parser = saiga_vte::Parser::new();
-    let mut performer = NopPerformer::default();
-
-    let mut group = c.benchmark_group("saiga parser advance");
-
-    group.bench_function("batch", |b| {
-        b.iter(|| {
-            parser.advance(&mut performer, black_box(BAT_OUTPUT));
-        });
-    });
-
-    group.bench_function("batch utf8", |b| {
-        b.iter(|| {
-            parser.advance(&mut performer, black_box(BIG_UTF8));
-        });
-    });
-
-    group.bench_function("batch ascii", |b| {
-        b.iter(|| {
-            parser.advance(&mut performer, black_box(BIG_ASCII));
-        });
-    });
-
-    group.finish()
+        group.finish();
+    }
 }
 
 criterion_group! {
     name = benches;
-    config = Criterion::default().measurement_time(Duration::from_secs(10)).with_profiler(PProfProfiler::new(50_000, Output::Flamegraph(None)));
-    targets = saiga_vte, alacritty_vte, wezterm_vte,
+    config = Criterion::default().measurement_time(Duration::from_secs(10));
+    targets = vte,
 }
 
 criterion_main!(benches);

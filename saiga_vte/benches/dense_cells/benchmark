@@ -1,0 +1,23 @@
+#!/bin/sh
+
+# Update the entire grid as often as possible with a huge payload in every cell.
+
+columns=80
+lines=40
+
+offset=0
+
+printf "\e[?1049h"
+
+for char in A B C D E F G H I J K L M N O P Q R S T U V W X Y Z; do
+    printf "\e[H"
+    for line in $(seq "$lines"); do
+        for column in $(seq "$columns"); do
+            index=$((line + column + offset))
+            fg_col=$((index % 156 + 100))
+            bg_col=$((255 - index % 156 + 100))
+            printf "\e[38;5;%s;48;5;%s;1;3;4m%s" "$fg_col" "$bg_col" "$char"
+        done
+    done
+    offset=$((offset + 1))
+done

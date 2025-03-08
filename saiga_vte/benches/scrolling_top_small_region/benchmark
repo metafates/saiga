@@ -1,0 +1,10 @@
+#!/bin/sh
+
+lines=40
+
+printf "\e[?1049h\e[%d;%dr" $((lines / 2)) $lines
+
+# Scroll all lines up as quickly as possible.
+for _ in $(seq 10000); do
+    printf "y\n"
+done

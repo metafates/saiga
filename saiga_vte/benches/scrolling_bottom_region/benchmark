@@ -1,0 +1,6 @@
+#!/bin/sh
+
+# Scroll all lines up as quickly as possible.
+lines=40
+
+printf "\e[?1049h\e[1;%dr" $((lines - 1))

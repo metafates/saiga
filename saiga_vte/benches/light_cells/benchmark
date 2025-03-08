@@ -1,0 +1,12 @@
+#!/bin/sh
+
+# Update the entire grid as often as possible without scrolling.
+
+columns=80
+lines=40
+
+printf "\e[?1049h"
+
+for char in A B C D E F G H I J K L M N O P Q R S T U V W X Y Z; do
+    printf "\e[H%*s" $((columns * lines)) | tr ' ' "$char"
+done

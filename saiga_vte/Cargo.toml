@@ -10,14 +10,11 @@ bitflags = "2.8.0"
 memchr = "2.7.4"
 
 [dev-dependencies]
+# alacritty
+vte = "0.15.0"
+# wezterm
+vtparse = "0.6.2"
 criterion = { version = "0.5", features = ["html_reports"] }
-vte = "0.15.0" # alacritty
-vtparse = "0.6.2" # wezterm
-pprof = { version = "0.14.0", features = [
-    "flamegraph",
-    "criterion",
-    "frame-pointer",
-] }
 
 [[bench]]
 name = "parser"

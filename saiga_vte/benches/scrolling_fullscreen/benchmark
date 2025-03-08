@@ -1,0 +1,13 @@
+#!/bin/sh
+
+for _ in $(seq 100000); do
+    printf "y\n"
+done
+
+# Scroll all lines up with every line completely filled.
+
+columns=40
+
+for char in A B C D E F G H I J K L M N O P Q R S T U V W X Y Z; do
+    printf "%*s\n" $columns | tr ' ' "$char"
+done

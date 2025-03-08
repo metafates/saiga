@@ -21,6 +21,7 @@ build-pgo:
 
 # Run benchmarks
 bench:
+    {{ just_executable() }} --justfile {{ "saiga_vte" / "justfile" }} generate-bench-data
     cargo bench
 
 # Run tests
