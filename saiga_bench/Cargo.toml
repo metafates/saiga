@@ -1,0 +1,15 @@
+[package]
+name = "saiga_bench"
+version = "0.1.0"
+edition = "2024"
+
+[dev-dependencies]
+vte = "0.15.0"
+vtparse = "0.6.2"
+saiga_vte = { path = "../saiga_vte" }
+
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "bench_main"
+harness = false

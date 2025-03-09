@@ -1,7 +1,7 @@
 //! Parse input from stdin and log actions on stdout
 use std::io::{self, Read};
 
-use vte::{Params, Parser, Perform};
+use saiga_vte::{Params, Parser, Perform};
 
 /// A type implementing Perform that just logs actions
 struct Log;

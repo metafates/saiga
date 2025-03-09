@@ -1,6 +1,6 @@
 use std::{char, mem::MaybeUninit, str};
 
-use params::{Params, ParamsIter};
+pub use params::{Params, ParamsIter};
 use table::{Action, State};
 
 pub mod ansi;

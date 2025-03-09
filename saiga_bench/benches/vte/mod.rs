@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
+use criterion::{Criterion, Throughput, black_box, criterion_group};
 
 #[derive(Default)]
 struct NopPerformer {}
@@ -173,6 +173,9 @@ fn vte(c: &mut Criterion) {
     ] {
         let mut group = c.benchmark_group(name);
 
+        // ignore changes smaller than 2.5%
+        group.noise_threshold(0.025);
+
         group.throughput(Throughput::BytesDecimal(input.len() as u64));
 
         group.bench_with_input("saiga", input, |b, i| {
@@ -198,9 +201,7 @@ fn vte(c: &mut Criterion) {
 }
 
 criterion_group! {
-    name = benches;
+    name = vte_bench;
     config = Criterion::default().measurement_time(Duration::from_secs(10));
     targets = vte,
 }
-
-criterion_main!(benches);
