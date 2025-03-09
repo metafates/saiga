@@ -11,21 +11,6 @@ with some ideas taken from [Ghostty](https://github.com/ghostty-org/ghostty).
 optimizations for processing UTF-8 in parallel.
 - WebGPU frontend with damage tracking and partial screen updates
 
-## Performance
-
-Saiga aims to be fast.
-
-Right now it lacks many useful (and not so) features and optimizations.
-However, it can already outperform Alacritty terminal on [alacritty/vtebench](https://github.com/alacritty/vtebench) under certain circumstances.
-
-<img width="700" alt="vtebench results" src="https://github.com/user-attachments/assets/a8760b7b-ffcf-4b11-acce-cc9e8fbe0394">
-
-The screenshot above demonstrates results of the benchmark.
-Alacritty is on the left, Saiga is on the right.
-Apple M3 Pro, 36 GB RAM compiled with PGO.
-
-The results of the benchmark may vary, as the Saiga is work in progress project.
-
 ## Building
 
 You will need rust stable toolchain.
@@ -42,25 +27,16 @@ just build
 ./target/release/saiga
 ```
 
-Build with profile guided optimizations:
-
-> [!IMPORTANT]
-> On macOS you will need to install latest `llvm` tools: `brew install llvm` **AND** follow the instructions it will give you after the installation, like properly adding it to the `$PATH`
+## Benchmarks
 
 ```bash
-# First, you need to generate a profile. To do so, run
-just generate-pgo
+just bench
+```
 
-# It will compile and run saiga in special mode for generating PGO data.
-# Do something with it you would normally do with terminal, like using vim.
-# You can also run vtebench with it.
-# After you're done recording your profile close the terminal.
+## Tests
 
-# And compile with it
-just build-pgo
-
-# You can then run saiga like that
-./target/release/saiga
+```bash
+just test
 ```
 
 ## TODO
