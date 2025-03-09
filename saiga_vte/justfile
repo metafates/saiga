@@ -11,7 +11,9 @@ generate-bench-data:
     ./benches/scrolling_top_small_region/benchmark > ./benches/scrolling_top_small_region/out
     ./benches/sync_medium_cells/benchmark > ./benches/sync_medium_cells/out
     ./benches/unicode/benchmark > ./benches/unicode/out
-    ./benches/ascii/benchmark > ./benches/ascii/out
+    ./benches/ascii_all/benchmark > ./benches/ascii_all/out
+    ./benches/ascii_printable/benchmark > ./benches/ascii_printable/out
+    ./benches/missing_glyphs/benchmark > ./benches/missing_glyphs/out
 
 cleanup:
     rm -f ./benches/**/out

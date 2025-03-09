@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 
 #[derive(Default)]
 struct NopPerformer {}
@@ -156,7 +156,9 @@ fn vte(c: &mut Criterion) {
 
     for (name, input) in [
         suite!("unicode"),
-        suite!("ascii"),
+        suite!("ascii_all"),
+        suite!("ascii_printable"),
+        suite!("missing_glyphs"),
         suite!("cursor_motion"),
         suite!("dense_cells"),
         suite!("light_cells"),
@@ -171,23 +173,23 @@ fn vte(c: &mut Criterion) {
     ] {
         let mut group = c.benchmark_group(name);
 
-        group.throughput(criterion::Throughput::Bytes(input.len() as u64));
+        group.throughput(Throughput::BytesDecimal(input.len() as u64));
 
         group.bench_with_input("saiga", input, |b, i| {
             b.iter(|| {
-                saiga_parser.advance(&mut performer, i);
+                saiga_parser.advance(&mut performer, black_box(i));
             });
         });
 
         group.bench_with_input("alacritty", input, |b, i| {
             b.iter(|| {
-                alacritty_parser.advance(&mut performer, i);
+                alacritty_parser.advance(&mut performer, black_box(i));
             });
         });
 
         group.bench_with_input("wezterm", input, |b, i| {
             b.iter(|| {
-                wezterm_parser.parse(i, &mut performer);
+                wezterm_parser.parse(black_box(i), &mut performer);
             });
         });
 
