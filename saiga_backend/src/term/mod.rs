@@ -2,7 +2,7 @@
 
 use std::ops::{Index, IndexMut, Range};
 use std::sync::Arc;
-use std::{cmp, mem, ptr, slice, str};
+use std::{cmp, mem, ptr, str};
 
 use base64::engine::general_purpose::STANDARD as Base64;
 use base64::Engine;
@@ -129,150 +129,6 @@ pub fn viewport_to_point(display_offset: usize, point: Point<usize>) -> Point {
     Point::new(line, point.column)
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct LineDamageBounds {
-    /// Damaged line number.
-    pub line: usize,
-
-    /// Leftmost damaged column.
-    pub left: usize,
-
-    /// Rightmost damaged column.
-    pub right: usize,
-}
-
-impl LineDamageBounds {
-    #[inline]
-    pub fn new(line: usize, left: usize, right: usize) -> Self {
-        Self { line, left, right }
-    }
-
-    #[inline]
-    pub fn undamaged(line: usize, num_cols: usize) -> Self {
-        Self {
-            line,
-            left: num_cols,
-            right: 0,
-        }
-    }
-
-    #[inline]
-    pub fn reset(&mut self, num_cols: usize) {
-        *self = Self::undamaged(self.line, num_cols);
-    }
-
-    #[inline]
-    pub fn expand(&mut self, left: usize, right: usize) {
-        self.left = cmp::min(self.left, left);
-        self.right = cmp::max(self.right, right);
-    }
-
-    #[inline]
-    pub fn is_damaged(&self) -> bool {
-        self.left <= self.right
-    }
-}
-
-/// Terminal damage information collected since the last [`Term::reset_damage`] call.
-#[derive(Debug)]
-pub enum TermDamage<'a> {
-    /// The entire terminal is damaged.
-    Full,
-
-    /// Iterator over damaged lines in the terminal.
-    Partial(TermDamageIterator<'a>),
-}
-
-/// Iterator over the terminal's viewport damaged lines.
-#[derive(Clone, Debug)]
-pub struct TermDamageIterator<'a> {
-    line_damage: slice::Iter<'a, LineDamageBounds>,
-    display_offset: usize,
-}
-
-impl<'a> TermDamageIterator<'a> {
-    pub fn new(line_damage: &'a [LineDamageBounds], display_offset: usize) -> Self {
-        let num_lines = line_damage.len();
-        // Filter out invisible damage.
-        let line_damage = &line_damage[..num_lines.saturating_sub(display_offset)];
-        Self {
-            display_offset,
-            line_damage: line_damage.iter(),
-        }
-    }
-}
-
-impl Iterator for TermDamageIterator<'_> {
-    type Item = LineDamageBounds;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.line_damage.find_map(|line| {
-            line.is_damaged().then_some(LineDamageBounds::new(
-                line.line + self.display_offset,
-                line.left,
-                line.right,
-            ))
-        })
-    }
-}
-
-/// State of the terminal damage.
-struct TermDamageState {
-    /// Hint whether terminal should be damaged entirely regardless of the actual damage changes.
-    full: bool,
-
-    /// Information about damage on terminal lines.
-    lines: Vec<LineDamageBounds>,
-
-    /// Old terminal cursor point.
-    last_cursor: Point,
-}
-
-impl TermDamageState {
-    fn new(num_cols: usize, num_lines: usize) -> Self {
-        let lines = (0..num_lines)
-            .map(|line| LineDamageBounds::undamaged(line, num_cols))
-            .collect();
-
-        Self {
-            full: true,
-            lines,
-            last_cursor: Default::default(),
-        }
-    }
-
-    #[inline]
-    fn resize(&mut self, num_cols: usize, num_lines: usize) {
-        // Reset point, so old cursor won't end up outside of the viewport.
-        self.last_cursor = Default::default();
-        self.full = true;
-
-        self.lines.clear();
-        self.lines.reserve(num_lines);
-        for line in 0..num_lines {
-            self.lines.push(LineDamageBounds::undamaged(line, num_cols));
-        }
-    }
-
-    /// Damage point inside of the viewport.
-    #[inline]
-    fn damage_point(&mut self, point: Point<usize>) {
-        self.damage_line(point.line, point.column.0, point.column.0);
-    }
-
-    /// Expand `line`'s damage to span at least `left` to `right` column.
-    #[inline]
-    fn damage_line(&mut self, line: usize, left: usize, right: usize) {
-        self.lines[line].expand(left, right);
-    }
-
-    /// Reset information about terminal damage.
-    fn reset(&mut self, num_cols: usize) {
-        self.full = false;
-        self.lines.iter_mut().for_each(|line| line.reset(num_cols));
-    }
-}
-
 pub struct Term<T> {
     /// Terminal focus controlling the cursor shape.
     pub is_focused: bool,
@@ -326,9 +182,6 @@ pub struct Term<T> {
 
     /// Currently inactive keyboard mode stack.
     inactive_keyboard_mode_stack: Vec<KeyboardModes>,
-
-    /// Information about damaged cells.
-    damage: TermDamageState,
 
     /// Config directly for the terminal.
     config: Config,
@@ -390,14 +243,8 @@ impl<T> Term<T> {
     where
         T: EventListener,
     {
-        let old_display_offset = self.grid.display_offset();
         self.grid.scroll_display(scroll);
         self.event_proxy.send_event(Event::MouseCursorDirty);
-
-        // Damage everything if display offset changed.
-        if old_display_offset != self.grid().display_offset() {
-            self.mark_fully_damaged();
-        }
     }
 
     pub fn new<D: Dimensions>(config: Config, dimensions: &D, event_proxy: T) -> Term<T> {
@@ -412,14 +259,10 @@ impl<T> Term<T> {
 
         let scroll_region = Line(0)..Line(grid.screen_lines() as i32);
 
-        // Initialize terminal damage, covering the entire terminal upon launch.
-        let damage = TermDamageState::new(num_cols, num_lines);
-
         Term {
             inactive_grid,
             scroll_region,
             event_proxy,
-            damage,
             config,
             grid,
             tabs,
@@ -434,57 +277,6 @@ impl<T> Term<T> {
             title: Default::default(),
             mode: Default::default(),
         }
-    }
-
-    /// Collect the information about the changes in the lines, which
-    /// could be used to minimize the amount of drawing operations.
-    ///
-    /// The user controlled elements, like `Vi` mode cursor and `Selection` are **not** part of the
-    /// collected damage state. Those could easily be tracked by comparing their old and new
-    /// value between adjacent frames.
-    ///
-    /// After reading damage [`reset_damage`] should be called.
-    ///
-    /// [`reset_damage`]: Self::reset_damage
-    #[must_use]
-    pub fn damage(&mut self) -> TermDamage<'_> {
-        // Ensure the entire terminal is damaged after entering insert mode.
-        // Leaving is handled in the ansi handler.
-        if self.mode.contains(TermMode::INSERT) {
-            self.mark_fully_damaged();
-        }
-
-        let previous_cursor = mem::replace(&mut self.damage.last_cursor, self.grid.cursor.point);
-
-        if self.damage.full {
-            return TermDamage::Full;
-        }
-
-        // Add information about old cursor position and new one if they are not the same, so we
-        // cover everything that was produced by `Term::input`.
-        if self.damage.last_cursor != previous_cursor {
-            // Cursor coordinates are always inside viewport even if you have `display_offset`.
-            let point = Point::new(previous_cursor.line.0 as usize, previous_cursor.column);
-            self.damage.damage_point(point);
-        }
-
-        // Always damage current cursor.
-        self.damage_cursor();
-
-        // NOTE: damage which changes all the content when the display offset is non-zero (e.g.
-        // scrolling) is handled via full damage.
-        let display_offset = self.grid().display_offset();
-        TermDamage::Partial(TermDamageIterator::new(&self.damage.lines, display_offset))
-    }
-
-    /// Resets the terminal damage information.
-    pub fn reset_damage(&mut self) {
-        self.damage.reset(self.columns());
-    }
-
-    #[inline]
-    fn mark_fully_damaged(&mut self) {
-        self.damage.full = true;
     }
 
     /// Set new options for the [`Term`].
@@ -513,9 +305,6 @@ impl<T> Term<T> {
             self.inactive_keyboard_mode_stack = Vec::new();
             self.mode.remove(TermMode::KITTY_KEYBOARD_PROTOCOL);
         }
-
-        // Damage everything on config updates.
-        self.mark_fully_damaged();
     }
 
     /// Convert the active selection to a String.
@@ -705,9 +494,6 @@ impl<T> Term<T> {
 
         // Reset scrolling region.
         self.scroll_region = Line(0)..Line(self.screen_lines() as i32);
-
-        // Resize damage information.
-        self.damage.resize(num_cols, num_lines);
     }
 
     /// Active terminal modes.
@@ -744,7 +530,6 @@ impl<T> Term<T> {
         mem::swap(&mut self.grid, &mut self.inactive_grid);
         self.mode ^= TermMode::ALT_SCREEN;
         self.selection = None;
-        self.mark_fully_damaged();
     }
 
     /// Scroll screen down.
@@ -775,7 +560,6 @@ impl<T> Term<T> {
 
         // Scroll between origin and bottom
         self.grid.scroll_down(&region, lines);
-        self.mark_fully_damaged();
     }
 
     /// Scroll screen up
@@ -800,8 +584,6 @@ impl<T> Term<T> {
             .and_then(|s| s.rotate(self, &region, lines as i32));
 
         self.grid.scroll_up(&region, lines);
-
-        self.mark_fully_damaged();
     }
 
     fn deccolm(&mut self)
@@ -814,7 +596,6 @@ impl<T> Term<T> {
 
         // Clear grid.
         self.grid.reset_region(..);
-        self.mark_fully_damaged();
     }
 
     #[inline]
@@ -909,13 +690,11 @@ impl<T> Term<T> {
         if self.grid.cursor.point.line + 1 >= self.scroll_region.end {
             self.linefeed();
         } else {
-            self.damage_cursor();
             self.grid.cursor.point.line += 1;
         }
 
         self.grid.cursor.point.column = Column(0);
         self.grid.cursor.input_needs_wrap = false;
-        self.damage_cursor();
     }
 
     /// Write `c` to the cell at the cursor position.
@@ -961,16 +740,6 @@ impl<T> Term<T> {
         cursor_cell.bg = bg;
         cursor_cell.flags = flags;
         cursor_cell.extra = extra;
-    }
-
-    #[inline]
-    fn damage_cursor(&mut self) {
-        // The normal cursor coordinates are always in viewport.
-        let point = Point::new(
-            self.grid.cursor.point.line.0 as usize,
-            self.grid.cursor.point.column,
-        );
-        self.damage.damage_point(point);
     }
 
     #[inline]
@@ -1115,8 +884,6 @@ impl<T: EventListener> Handler for Term<T> {
                 cell.c = 'E';
             }
         }
-
-        self.mark_fully_damaged();
     }
 
     #[inline]
@@ -1131,10 +898,8 @@ impl<T: EventListener> Handler for Term<T> {
             (Line(0), self.bottommost_line())
         };
 
-        self.damage_cursor();
         self.grid.cursor.point.line = cmp::max(cmp::min(line + y_offset, max_y), Line(0));
         self.grid.cursor.point.column = cmp::min(col, self.last_column());
-        self.damage_cursor();
         self.grid.cursor.input_needs_wrap = false;
     }
 
@@ -1163,8 +928,6 @@ impl<T: EventListener> Handler for Term<T> {
         let num_cells = self.columns() - destination;
 
         let line = cursor.point.line;
-        self.damage
-            .damage_line(line.0 as usize, 0, self.columns() - 1);
 
         let row = &mut self.grid[line][..];
 
@@ -1202,10 +965,6 @@ impl<T: EventListener> Handler for Term<T> {
         trace!("Moving forward: {}", cols);
         let last_column = cmp::min(self.grid.cursor.point.column + cols, self.last_column());
 
-        let cursor_line = self.grid.cursor.point.line.0 as usize;
-        self.damage
-            .damage_line(cursor_line, self.grid.cursor.point.column.0, last_column.0);
-
         self.grid.cursor.point.column = last_column;
         self.grid.cursor.input_needs_wrap = false;
     }
@@ -1214,10 +973,6 @@ impl<T: EventListener> Handler for Term<T> {
     fn move_backward(&mut self, cols: usize) {
         trace!("Moving backward: {}", cols);
         let column = self.grid.cursor.point.column.saturating_sub(cols);
-
-        let cursor_line = self.grid.cursor.point.line.0 as usize;
-        self.damage
-            .damage_line(cursor_line, column, self.grid.cursor.point.column.0);
 
         self.grid.cursor.point.column = Column(column);
         self.grid.cursor.input_needs_wrap = false;
@@ -1381,11 +1136,8 @@ impl<T: EventListener> Handler for Term<T> {
         trace!("Backspace");
 
         if self.grid.cursor.point.column > Column(0) {
-            let line = self.grid.cursor.point.line.0 as usize;
-            let column = self.grid.cursor.point.column.0;
             self.grid.cursor.point.column -= 1;
             self.grid.cursor.input_needs_wrap = false;
-            self.damage.damage_line(line, column - 1, column);
         }
     }
 
@@ -1393,11 +1145,7 @@ impl<T: EventListener> Handler for Term<T> {
     #[inline]
     fn carriage_return(&mut self) {
         trace!("Carriage return");
-        let new_col = 0;
-        let line = self.grid.cursor.point.line.0 as usize;
-        self.damage
-            .damage_line(line, new_col, self.grid.cursor.point.column.0);
-        self.grid.cursor.point.column = Column(new_col);
+        self.grid.cursor.point.column = Column(0);
         self.grid.cursor.input_needs_wrap = false;
     }
 
@@ -1409,9 +1157,7 @@ impl<T: EventListener> Handler for Term<T> {
         if next == self.scroll_region.end {
             self.scroll_up(1);
         } else if next < self.screen_lines() {
-            self.damage_cursor();
             self.grid.cursor.point.line += 1;
-            self.damage_cursor();
         }
     }
 
@@ -1514,7 +1260,6 @@ impl<T: EventListener> Handler for Term<T> {
         // Cleared cells have current background color set.
         let bg = self.grid.cursor.template.bg;
         let line = cursor.point.line;
-        self.damage.damage_line(line.0 as usize, start.0, end.0);
         let row = &mut self.grid[line];
         for cell in &mut row[start..end] {
             *cell = bg.into();
@@ -1535,8 +1280,6 @@ impl<T: EventListener> Handler for Term<T> {
         let num_cells = columns - end;
 
         let line = cursor.point.line;
-        self.damage
-            .damage_line(line.0 as usize, 0, self.columns() - 1);
         let row = &mut self.grid[line][..];
 
         for offset in 0..num_cells {
@@ -1554,9 +1297,7 @@ impl<T: EventListener> Handler for Term<T> {
     #[inline]
     fn move_backward_tabs(&mut self, count: u16) {
         trace!("Moving backward {} tabs", count);
-        self.damage_cursor();
 
-        let old_col = self.grid.cursor.point.column.0;
         for _ in 0..count {
             let mut col = self.grid.cursor.point.column;
             for i in (0..(col.0)).rev() {
@@ -1567,10 +1308,6 @@ impl<T: EventListener> Handler for Term<T> {
             }
             self.grid.cursor.point.column = col;
         }
-
-        let line = self.grid.cursor.point.line.0 as usize;
-        self.damage
-            .damage_line(line, self.grid.cursor.point.column.0, old_col);
     }
 
     #[inline]
@@ -1589,9 +1326,7 @@ impl<T: EventListener> Handler for Term<T> {
     fn restore_cursor_position(&mut self) {
         trace!("Restoring cursor position");
 
-        self.damage_cursor();
         self.grid.cursor = self.grid.saved_cursor.clone();
-        self.damage_cursor();
     }
 
     #[inline]
@@ -1609,9 +1344,6 @@ impl<T: EventListener> Handler for Term<T> {
             ansi::LineClearMode::All => (Column(0), Column(self.columns())),
         };
 
-        self.damage
-            .damage_line(point.line.0 as usize, left.0, right.0 - 1);
-
         let row = &mut self.grid[point.line];
         for cell in &mut row[left..right] {
             *cell = bg.into();
@@ -1625,11 +1357,6 @@ impl<T: EventListener> Handler for Term<T> {
     #[inline]
     fn set_color(&mut self, index: usize, color: Rgb) {
         trace!("Setting color[{}] = {:?}", index, color);
-
-        // Damage terminal if the color changed and it's not the cursor.
-        if index != NamedColor::Cursor as usize && self.colors[index] != Some(color) {
-            self.mark_fully_damaged();
-        }
 
         self.colors[index] = Some(color);
     }
@@ -1659,11 +1386,6 @@ impl<T: EventListener> Handler for Term<T> {
     #[inline]
     fn reset_color(&mut self, index: usize) {
         trace!("Resetting color[{}]", index);
-
-        // Damage terminal if the color changed and it's not the cursor.
-        if index != NamedColor::Cursor as usize && self.colors[index].is_some() {
-            self.mark_fully_damaged();
-        }
 
         self.colors[index] = None;
     }
@@ -1774,8 +1496,6 @@ impl<T: EventListener> Handler for Term<T> {
             // We have no history to clear.
             ansi::ScreenClearMode::Saved => (),
         }
-
-        self.mark_fully_damaged();
     }
 
     #[inline]
@@ -1812,7 +1532,6 @@ impl<T: EventListener> Handler for Term<T> {
         self.mode.insert(TermMode::default());
 
         self.event_proxy.send_event(Event::CursorBlinkingChange);
-        self.mark_fully_damaged();
     }
 
     #[inline]
@@ -1822,9 +1541,7 @@ impl<T: EventListener> Handler for Term<T> {
         if self.grid.cursor.point.line == self.scroll_region.start {
             self.scroll_down(1);
         } else {
-            self.damage_cursor();
             self.grid.cursor.point.line = cmp::max(self.grid.cursor.point.line - 1, Line(0));
-            self.damage_cursor();
         }
     }
 
@@ -2087,10 +1804,7 @@ impl<T: EventListener> Handler for Term<T> {
 
         trace!("Setting public mode: {:?}", mode);
         match mode {
-            NamedMode::Insert => {
-                self.mode.remove(TermMode::INSERT);
-                self.mark_fully_damaged();
-            }
+            NamedMode::Insert => self.mode.remove(TermMode::INSERT),
             NamedMode::LineFeedNewLine => self.mode.remove(TermMode::LINE_FEED_NEW_LINE),
         }
     }
@@ -2853,454 +2567,6 @@ mod tests {
 
         assert_eq!(term.history_size(), 15);
         assert_eq!(term.grid.cursor.point, Point::new(Line(4), Column(0)));
-    }
-
-    #[test]
-    fn damage_public_usage() {
-        let size = TermSize::new(10, 10);
-        let mut term = Term::new(Config::default(), &size, VoidListener);
-        // Reset terminal for partial damage tests since it's initialized as fully damaged.
-        term.reset_damage();
-
-        // Test that we damage input form [`Term::input`].
-
-        let left = term.grid.cursor.point.column.0;
-        term.input('d');
-        term.input('a');
-        term.input('m');
-        term.input('a');
-        term.input('g');
-        term.input('e');
-        let right = term.grid.cursor.point.column.0;
-
-        let mut damaged_lines = match term.damage() {
-            TermDamage::Full => panic!("Expected partial damage, however got Full"),
-            TermDamage::Partial(damaged_lines) => damaged_lines,
-        };
-        assert_eq!(
-            damaged_lines.next(),
-            Some(LineDamageBounds {
-                line: 0,
-                left,
-                right
-            })
-        );
-        assert_eq!(damaged_lines.next(), None);
-        term.reset_damage();
-
-        // Create scrollback.
-        for _ in 0..20 {
-            term.newline();
-        }
-
-        match term.damage() {
-            TermDamage::Full => (),
-            TermDamage::Partial(_) => panic!("Expected Full damage, however got Partial "),
-        };
-        term.reset_damage();
-
-        term.scroll_display(Scroll::Delta(10));
-        term.reset_damage();
-
-        // No damage when scrolled into viewport.
-        for idx in 0..term.columns() {
-            term.goto(idx as i32, idx);
-        }
-        let mut damaged_lines = match term.damage() {
-            TermDamage::Full => panic!("Expected partial damage, however got Full"),
-            TermDamage::Partial(damaged_lines) => damaged_lines,
-        };
-        assert_eq!(damaged_lines.next(), None);
-
-        // Scroll back into the viewport, so we have 2 visible lines which terminal can write
-        // to.
-        term.scroll_display(Scroll::Delta(-2));
-        term.reset_damage();
-
-        term.goto(0, 0);
-        term.goto(1, 0);
-        term.goto(2, 0);
-        let display_offset = term.grid().display_offset();
-        let mut damaged_lines = match term.damage() {
-            TermDamage::Full => panic!("Expected partial damage, however got Full"),
-            TermDamage::Partial(damaged_lines) => damaged_lines,
-        };
-        assert_eq!(
-            damaged_lines.next(),
-            Some(LineDamageBounds {
-                line: display_offset,
-                left: 0,
-                right: 0
-            })
-        );
-        assert_eq!(
-            damaged_lines.next(),
-            Some(LineDamageBounds {
-                line: display_offset + 1,
-                left: 0,
-                right: 0
-            })
-        );
-        assert_eq!(damaged_lines.next(), None);
-    }
-
-    #[test]
-    fn damage_cursor_movements() {
-        let size = TermSize::new(10, 10);
-        let mut term = Term::new(Config::default(), &size, VoidListener);
-        let num_cols = term.columns();
-        // Reset terminal for partial damage tests since it's initialized as fully damaged.
-        term.reset_damage();
-
-        term.goto(1, 1);
-
-        // NOTE While we can use `[Term::damage]` to access terminal damage information, in the
-        // following tests we will be accessing `term.damage.lines` directly to avoid adding extra
-        // damage information (like cursor and Vi cursor), which we're not testing.
-
-        assert_eq!(
-            term.damage.lines[0],
-            LineDamageBounds {
-                line: 0,
-                left: 0,
-                right: 0
-            }
-        );
-        assert_eq!(
-            term.damage.lines[1],
-            LineDamageBounds {
-                line: 1,
-                left: 1,
-                right: 1
-            }
-        );
-        term.damage.reset(num_cols);
-
-        term.move_forward(3);
-        assert_eq!(
-            term.damage.lines[1],
-            LineDamageBounds {
-                line: 1,
-                left: 1,
-                right: 4
-            }
-        );
-        term.damage.reset(num_cols);
-
-        term.move_backward(8);
-        assert_eq!(
-            term.damage.lines[1],
-            LineDamageBounds {
-                line: 1,
-                left: 0,
-                right: 4
-            }
-        );
-        term.goto(5, 5);
-        term.damage.reset(num_cols);
-
-        term.backspace();
-        term.backspace();
-        assert_eq!(
-            term.damage.lines[5],
-            LineDamageBounds {
-                line: 5,
-                left: 3,
-                right: 5
-            }
-        );
-        term.damage.reset(num_cols);
-
-        term.move_up(1);
-        assert_eq!(
-            term.damage.lines[5],
-            LineDamageBounds {
-                line: 5,
-                left: 3,
-                right: 3
-            }
-        );
-        assert_eq!(
-            term.damage.lines[4],
-            LineDamageBounds {
-                line: 4,
-                left: 3,
-                right: 3
-            }
-        );
-        term.damage.reset(num_cols);
-
-        term.move_down(1);
-        term.move_down(1);
-        assert_eq!(
-            term.damage.lines[4],
-            LineDamageBounds {
-                line: 4,
-                left: 3,
-                right: 3
-            }
-        );
-        assert_eq!(
-            term.damage.lines[5],
-            LineDamageBounds {
-                line: 5,
-                left: 3,
-                right: 3
-            }
-        );
-        assert_eq!(
-            term.damage.lines[6],
-            LineDamageBounds {
-                line: 6,
-                left: 3,
-                right: 3
-            }
-        );
-        term.damage.reset(num_cols);
-
-        term.wrapline();
-        assert_eq!(
-            term.damage.lines[6],
-            LineDamageBounds {
-                line: 6,
-                left: 3,
-                right: 3
-            }
-        );
-        assert_eq!(
-            term.damage.lines[7],
-            LineDamageBounds {
-                line: 7,
-                left: 0,
-                right: 0
-            }
-        );
-        term.move_forward(3);
-        term.move_up(1);
-        term.damage.reset(num_cols);
-
-        term.linefeed();
-        assert_eq!(
-            term.damage.lines[6],
-            LineDamageBounds {
-                line: 6,
-                left: 3,
-                right: 3
-            }
-        );
-        assert_eq!(
-            term.damage.lines[7],
-            LineDamageBounds {
-                line: 7,
-                left: 3,
-                right: 3
-            }
-        );
-        term.damage.reset(num_cols);
-
-        term.carriage_return();
-        assert_eq!(
-            term.damage.lines[7],
-            LineDamageBounds {
-                line: 7,
-                left: 0,
-                right: 3
-            }
-        );
-        term.damage.reset(num_cols);
-
-        term.erase_chars(5);
-        assert_eq!(
-            term.damage.lines[7],
-            LineDamageBounds {
-                line: 7,
-                left: 0,
-                right: 5
-            }
-        );
-        term.damage.reset(num_cols);
-
-        term.delete_chars(3);
-        let right = term.columns() - 1;
-        assert_eq!(
-            term.damage.lines[7],
-            LineDamageBounds {
-                line: 7,
-                left: 0,
-                right
-            }
-        );
-        term.move_forward(term.columns());
-        term.damage.reset(num_cols);
-
-        term.move_backward_tabs(1);
-        assert_eq!(
-            term.damage.lines[7],
-            LineDamageBounds {
-                line: 7,
-                left: 8,
-                right
-            }
-        );
-        term.save_cursor_position();
-        term.goto(1, 1);
-        term.damage.reset(num_cols);
-
-        term.restore_cursor_position();
-        assert_eq!(
-            term.damage.lines[1],
-            LineDamageBounds {
-                line: 1,
-                left: 1,
-                right: 1
-            }
-        );
-        assert_eq!(
-            term.damage.lines[7],
-            LineDamageBounds {
-                line: 7,
-                left: 8,
-                right: 8
-            }
-        );
-        term.damage.reset(num_cols);
-
-        term.clear_line(ansi::LineClearMode::All);
-        assert_eq!(
-            term.damage.lines[7],
-            LineDamageBounds {
-                line: 7,
-                left: 0,
-                right
-            }
-        );
-        term.damage.reset(num_cols);
-
-        term.clear_line(ansi::LineClearMode::Left);
-        assert_eq!(
-            term.damage.lines[7],
-            LineDamageBounds {
-                line: 7,
-                left: 0,
-                right: 8
-            }
-        );
-        term.damage.reset(num_cols);
-
-        term.clear_line(ansi::LineClearMode::Right);
-        assert_eq!(
-            term.damage.lines[7],
-            LineDamageBounds {
-                line: 7,
-                left: 8,
-                right
-            }
-        );
-        term.damage.reset(num_cols);
-
-        term.reverse_index();
-        assert_eq!(
-            term.damage.lines[7],
-            LineDamageBounds {
-                line: 7,
-                left: 8,
-                right: 8
-            }
-        );
-        assert_eq!(
-            term.damage.lines[6],
-            LineDamageBounds {
-                line: 6,
-                left: 8,
-                right: 8
-            }
-        );
-    }
-
-    #[test]
-    fn full_damage() {
-        let size = TermSize::new(100, 10);
-        let mut term = Term::new(Config::default(), &size, VoidListener);
-
-        assert!(term.damage.full);
-        for _ in 0..20 {
-            term.newline();
-        }
-        term.reset_damage();
-
-        term.clear_screen(ansi::ScreenClearMode::Above);
-        assert!(term.damage.full);
-        term.reset_damage();
-
-        term.scroll_display(Scroll::Top);
-        assert!(term.damage.full);
-        term.reset_damage();
-
-        // Sequential call to scroll display without doing anything shouldn't damage.
-        term.scroll_display(Scroll::Top);
-        assert!(!term.damage.full);
-        term.reset_damage();
-
-        term.set_options(Config::default());
-        assert!(term.damage.full);
-        term.reset_damage();
-
-        term.scroll_down_relative(Line(5), 2);
-        assert!(term.damage.full);
-        term.reset_damage();
-
-        term.scroll_up_relative(Line(3), 2);
-        assert!(term.damage.full);
-        term.reset_damage();
-
-        term.deccolm();
-        assert!(term.damage.full);
-        term.reset_damage();
-
-        term.decaln();
-        assert!(term.damage.full);
-        term.reset_damage();
-
-        term.set_mode(NamedMode::Insert.into());
-        // Just setting `Insert` mode shouldn't mark terminal as damaged.
-        assert!(!term.damage.full);
-        term.reset_damage();
-
-        let color_index = 257;
-        term.set_color(color_index, Rgb::default());
-        assert!(term.damage.full);
-        term.reset_damage();
-
-        // Setting the same color once again shouldn't trigger full damage.
-        term.set_color(color_index, Rgb::default());
-        assert!(!term.damage.full);
-
-        term.reset_color(color_index);
-        assert!(term.damage.full);
-        term.reset_damage();
-
-        // We shouldn't trigger fully damage when cursor gets update.
-        term.set_color(NamedColor::Cursor as usize, Rgb::default());
-        assert!(!term.damage.full);
-
-        // However requesting terminal damage should mark terminal as fully damaged in `Insert`
-        // mode.
-        let _ = term.damage();
-        assert!(term.damage.full);
-        term.reset_damage();
-
-        term.unset_mode(NamedMode::Insert.into());
-        assert!(term.damage.full);
-        term.reset_damage();
-
-        // Keep this as a last check, so we don't have to deal with restoring from alt-screen.
-        term.swap_alt();
-        assert!(term.damage.full);
-        term.reset_damage();
-
-        let size = TermSize::new(10, 10);
-        term.resize(size);
-        assert!(term.damage.full);
     }
 
     #[test]

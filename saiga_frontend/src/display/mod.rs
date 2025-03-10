@@ -15,18 +15,12 @@ use saiga_vte::ansi::{Color, CursorShape, CursorStyle, NamedColor};
 use wgpu::RenderPass;
 use winit::window::Window;
 
-use crate::{
-    backend::{Damage, TermSize},
-    term_font::TermFont,
-    terminal::Terminal,
-    theme::Theme,
-};
+use crate::{backend::TermSize, term_font::TermFont, terminal::Terminal, theme::Theme};
 
 struct Frame<'a> {
     theme: &'a Theme,
     font: &'a TermFont,
     term_size: &'a TermSize,
-    damage: &'a Damage,
     grid: &'a Grid<Cell>,
     mode: &'a TermMode,
     cursor_style: CursorStyle,
@@ -90,55 +84,33 @@ impl Display<'_> {
         let term_size = *backend.size();
 
         backend.with_term(|term| {
-            let damage: Damage = term.damage().into();
-
-            let is_full_damage = damage.is_full();
-
-            {
-                let load_op = if is_full_damage {
-                    wgpu::LoadOp::Clear(bg.into())
-                } else {
-                    wgpu::LoadOp::Load
-                };
-
-                let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                    label: None,
-                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                        view: &self
-                            .context
-                            .texture
-                            .create_view(&wgpu::TextureViewDescriptor::default()),
-                        resolve_target: None,
-                        ops: wgpu::Operations {
-                            load: load_op,
-                            store: wgpu::StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                });
-
-                self.render_cells(
-                    &mut rpass,
-                    &Frame {
-                        theme: &terminal.theme,
-                        font: &terminal.font,
-                        term_size: &term_size,
-                        damage: &damage,
-                        grid: term.grid(),
-                        mode: term.mode(),
-                        cursor_style: term.cursor_style(),
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                label: None,
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &surface
+                        .texture
+                        .create_view(&wgpu::TextureViewDescriptor::default()),
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(bg.into()),
+                        store: wgpu::StoreOp::Store,
                     },
-                );
-            }
+                })],
+                depth_stencil_attachment: None,
+            });
 
-            term.reset_damage();
-
-            encoder.copy_texture_to_texture(
-                self.context.texture.as_image_copy(),
-                surface.texture.as_image_copy(),
-                self.context.texture.size(),
+            self.render_cells(
+                &mut rpass,
+                &Frame {
+                    theme: &terminal.theme,
+                    font: &terminal.font,
+                    term_size: &term_size,
+                    grid: term.grid(),
+                    mode: term.mode(),
+                    cursor_style: term.cursor_style(),
+                },
             );
         });
 
@@ -150,19 +122,12 @@ impl Display<'_> {
     fn render_cells(&mut self, rpass: &mut RenderPass<'_>, frame: &Frame) {
         let show_cursor = frame.mode.contains(TermMode::SHOW_CURSOR);
 
-        let count = match frame.damage {
-            Damage::Full => frame.grid.columns() * frame.grid.screen_lines(),
-            Damage::Partial(lines) => frame.grid.columns() * lines.len(),
-        };
+        let count = frame.grid.columns() * frame.grid.screen_lines();
 
         let mut rects = Vec::with_capacity(count);
         let mut glyphs = Vec::with_capacity(count);
 
-        for indexed in frame.grid.display_iter().filter(|c| {
-            frame
-                .damage
-                .contains(c.point.line.0 as usize, c.point.column.0)
-        }) {
+        for indexed in frame.grid.display_iter() {
             let point = indexed.point;
 
             let (line, column) = (point.line, point.column);

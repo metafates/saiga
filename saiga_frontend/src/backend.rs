@@ -6,45 +6,13 @@ use saiga_backend::{
     grid::Dimensions,
     index::{Column, Line},
     sync::FairMutex,
-    term::{self, Term, TermDamage},
+    term::{self, Term},
     tty,
 };
 use saiga_vte::ansi::Rgb;
 use tokio::sync::mpsc;
 
 use crate::{settings::BackendSettings, size::Size};
-
-pub enum Damage {
-    Full,
-    Partial(HashMap<usize, (usize, usize)>),
-}
-
-impl Damage {
-    pub const fn is_full(&self) -> bool {
-        matches!(self, Damage::Full)
-    }
-
-    pub fn contains(&self, line: usize, column: usize) -> bool {
-        match self {
-            Damage::Full => true,
-            Damage::Partial(m) => m
-                .get(&line)
-                .map(|(left, right)| *left <= column && column <= *right)
-                .unwrap_or_default(),
-        }
-    }
-}
-
-impl From<TermDamage<'_>> for Damage {
-    fn from(value: TermDamage) -> Self {
-        match value {
-            TermDamage::Full => Damage::Full,
-            TermDamage::Partial(it) => {
-                Damage::Partial(it.map(|b| (b.line, (b.left, b.right))).collect())
-            }
-        }
-    }
-}
 
 pub struct Backend {
     term: Arc<FairMutex<Term<EventProxy>>>,
