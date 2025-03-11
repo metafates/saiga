@@ -25,11 +25,11 @@ bench: generate-bench-data && cleanup-bench-data
 
 [private]
 generate-bench-data:
-    ./saiga_bench/benches/vte/cursor_motion/benchmark >  ./saiga_bench/benches/vte/cursor_motion/out
-    ./saiga_bench/benches/vte/dense_cells/benchmark >    ./saiga_bench/benches/vte/dense_cells/out
-    ./saiga_bench/benches/vte/light_cells/benchmark >    ./saiga_bench/benches/vte/light_cells/out
-    ./saiga_bench/benches/vte/medium_cells/benchmark >   ./saiga_bench/benches/vte/medium_cells/out
-    ./saiga_bench/benches/vte/scrolling/benchmark >      ./saiga_bench/benches/vte/scrolling/out
+    ./saiga_bench/benches/vte/cursor_motion/benchmark >                 ./saiga_bench/benches/vte/cursor_motion/out
+    ./saiga_bench/benches/vte/dense_cells/benchmark >                   ./saiga_bench/benches/vte/dense_cells/out
+    ./saiga_bench/benches/vte/light_cells/benchmark >                   ./saiga_bench/benches/vte/light_cells/out
+    ./saiga_bench/benches/vte/medium_cells/benchmark >                  ./saiga_bench/benches/vte/medium_cells/out
+    ./saiga_bench/benches/vte/scrolling/benchmark >                     ./saiga_bench/benches/vte/scrolling/out
     ./saiga_bench/benches/vte/scrolling_bottom_region/benchmark >       ./saiga_bench/benches/vte/scrolling_bottom_region/out
     ./saiga_bench/benches/vte/scrolling_bottom_small_region/benchmark > ./saiga_bench/benches/vte/scrolling_bottom_small_region/out
     ./saiga_bench/benches/vte/scrolling_fullscreen/benchmark >          ./saiga_bench/benches/vte/scrolling_fullscreen/out
