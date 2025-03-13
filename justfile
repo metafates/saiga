@@ -40,6 +40,7 @@ generate-bench-data:
     ./saiga_bench/benches/vte/ascii_all/benchmark >                     ./saiga_bench/benches/vte/ascii_all/out
     ./saiga_bench/benches/vte/ascii_printable/benchmark >               ./saiga_bench/benches/vte/ascii_printable/out
     ./saiga_bench/benches/vte/missing_glyphs/benchmark >                ./saiga_bench/benches/vte/missing_glyphs/out
+    ./saiga_bench/benches/vte/no_print/benchmark >                      ./saiga_bench/benches/vte/no_print/out
 
 [private]
 cleanup-bench-data:

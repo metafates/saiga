@@ -1,0 +1,36 @@
+#!/bin/sh
+
+for _ in $(seq 10000); do
+    # CSI Cursor movements
+    printf "\033[2A" # Up
+    printf "\033[3B" # Down
+    printf "\033[4C" # Right
+    printf "\033[1D" # Left
+
+    # CSI Colors/attributes
+    printf "\033[31m"       # Set foreground red
+    printf "\033[42m"       # Set background green
+    printf "\033[38;5;214m" # Set 8-bit color
+    printf "\033[0m"        # Reset attributes
+
+    # OSC sequences (Window/terminal control)
+    printf "\033]0;\007"        # Empty window title (BEL-terminated)
+    printf "\033]2;dummy\033\\" # Window title (ST-terminated)
+
+    # Device Control
+    printf "\033[5n"  # Device Status Report (DSR)
+    printf "\033[?6n" # Get cursor position
+
+    # Scrolling region
+    printf "\033[10;20r"
+
+    # Mode setting
+    printf "\033[?25l" # Hide cursor
+    printf "\033[?25h" # Show cursor
+
+    # C0 controls interspersed
+    printf "\r"     # Carriage return
+    printf "\f"     # Form feed
+    printf "\033\\" # ST (String Terminator)
+    printf "\007"   # BEL (Bell)
+done

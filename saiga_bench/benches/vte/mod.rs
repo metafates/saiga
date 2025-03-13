@@ -159,6 +159,7 @@ fn vte(c: &mut Criterion) {
         suite!("ascii_all"),
         suite!("ascii_printable"),
         suite!("missing_glyphs"),
+        suite!("no_print"),
         suite!("cursor_motion"),
         suite!("dense_cells"),
         suite!("light_cells"),

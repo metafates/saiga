@@ -3,4 +3,6 @@
 # Scroll all lines up as quickly as possible.
 lines=40
 
-printf "\e[?1049h\e[1;%dr" $((lines - 1))
+for _ in $(seq 1000); do
+    printf "\e[?1049h\e[1;%dr" $((lines - 1))
+done
