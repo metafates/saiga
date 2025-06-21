@@ -69,7 +69,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
             size: 16.0,
             font_type: Font {
                 // family: Family::Name("JetBrains Mono"),
-                // family: Family::Name("JetBrainsMono Nerd Font Mono"),
+                family: Family::Name("JetBrainsMono Nerd Font Mono"),
                 // family: Family::Monospace,
                 ..Default::default()
             },
